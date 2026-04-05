@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CivicDesk - AI civic Issue Reporting</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Boxicons for icons -->
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class='bx bxs-city'></i> CivicDesk
+            </div>
+            <nav class="nav-links">
+                <a href="#home" class="nav-item active" data-target="home-view">
+                    <i class='bx bx-home-alt'></i> Home
+                </a>
+                <a href="#upload" class="nav-item" data-target="upload-view">
+                    <i class='bx bx-cloud-upload'></i> Report Issue
+                </a>
+                <a href="#dashboard" class="nav-item" data-target="dashboard-view">
+                    <i class='bx bx-list-ul'></i> Dashboard
+                </a>
+                <a href="#admin" class="nav-item" data-target="admin-view">
+                    <i class='bx bx-bar-chart-alt-2'></i> Analytics
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <p>AI Classification Engine</p>
+                <div class="status-indicator">
+                    <span class="dot"></span> Online
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="topbar">
+                <div class="topbar-search">
+                    <i class='bx bx-search'></i>
+                    <input type="text" placeholder="Search tracking ID or department...">
+                </div>
+                <div class="topbar-profile">
+                    <div class="notification-bell">
+                        <i class='bx bx-bell'></i>
+                        <span class="badge">3</span>
+                    </div>
+                    <img src="https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff" alt="User" class="avatar">
+                </div>
+            </header>
+
+            <div class="view-container">
+                <!-- Home View -->
+                <section id="home-view" class="view active-view">
+                    <div class="hero-section">
+                        <h1>Smarter Cities with AI Routing</h1>
+                        <p>Upload a photo of any civic issue. We auto-classify and immediately dispatch it to the nearest responsible department using machine learning and geolocation.</p>
+                        <button class="btn btn-primary" onclick="document.querySelector('[data-target=\'upload-view\']').click()">
+                            Report an Issue Now <i class='bx bx-right-arrow-alt'></i>
+                        </button>
+                    </div>
+                    
+                    <div class="stats-grid" id="home-stats">
+                        <!-- Populated by JS -->
+                    </div>
+                </section>
+
+                <!-- Upload View -->
+                <section id="upload-view" class="view">
+                    <div class="page-header">
+                        <h2>Report a Civic Issue</h2>
+                        <p>Our CNN model supports 7 categories: Potholes, Garbage, Drainage, Streetlight, Water Leakage, Road Damage, and Construction.</p>
+                    </div>
+
+                    <div class="upload-layout">
+                        <div class="upload-card card">
+                            <form id="uploadForm">
+                                <div class="file-drop-area" id="drop-area">
+                                    <i class='bx bx-image-add' style="font-size: 3rem; color: var(--primary);"></i>
+                                    <p>Drag & Drop an image or click to select</p>
+                                    <input type="file" id="imageInput" accept="image/*" required>
+                                </div>
+                                <div id="imagePreview" class="image-preview"></div>
+
+                                <div class="form-group">
+                                    <label>Priority Level</label>
+                                    <select id="priorityInput" class="form-control">
+                                        <option value="Low">Low - Not urgent</option>
+                                        <option value="Medium" selected>Medium - Normal priority</option>
+                                        <option value="Urgent">Urgent - Immediate attention required</option>
+                                    </select>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary w-100" id="submitBtn">
+                                    Analyze & Submit Issue
+                                </button>
+                            </form>
+                            <!-- Loading overlay -->
+                            <div class="loading-overlay" id="loadingOverlay">
+                                <div class="spinner"></div>
+                                <p>AI is analyzing the image...</p>
+                            </div>
+                        </div>
+
+                        <div class="result-card card hidden" id="resultCard">
+                            <h3><i class='bx bx-bolt-circle text-primary'></i> AI Analysis Result</h3>
+                            <div class="result-item">
+                                <span>Detected Category:</span>
+                                <strong id="resCategory" class="badge-tag">...</strong>
+                            </div>
+                            <div class="result-item">
+                                <span>AI Confidence:</span>
+                                <div class="progress-bar">
+                                    <div class="progress" id="resConfidenceBar" style="width: 0%"></div>
+                                </div>
+                                <span id="resConfidence">0%</span>
+                            </div>
+                            <div class="result-item">
+                                <span>Routed Department:</span>
+                                <strong id="resDept">...</strong>
+                            </div>
+                            <div class="result-item">
+                                <span>Status:</span>
+                                <span class="badge badge-success">Submitted successfully</span>
+                            </div>
+                            <button class="btn btn-outline w-100 mt-4" onclick="document.querySelector('[data-target=\'dashboard-view\']').click()">View in Dashboard</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Dashboard View -->
+                <section id="dashboard-view" class="view">
+                    <div class="page-header flex-between">
+                        <h2>Live Issue Dashboard</h2>
+                        <button class="btn btn-outline btn-sm" onclick="fetchComplaints()"><i class='bx bx-refresh'></i> Refresh</button>
+                    </div>
+
+                    <div class="filters">
+                        <select id="filterCategory" class="form-control form-control-sm">
+                            <option value="all">All Categories</option>
+                        </select>
+                        <select id="filterStatus" class="form-control form-control-sm">
+                            <option value="all">All Statuses</option>
+                            <option value="submitted">Submitted</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="resolved">Resolved</option>
+                        </select>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Image</th>
+                                    <th>Category</th>
+                                    <th>Priority</th>
+                                    <th>Department</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="complaintsTableBody">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Admin Analytics View -->
+                <section id="admin-view" class="view">
+                    <div class="page-header">
+                        <h2>Analytics Overview</h2>
+                    </div>
+
+                    <div class="analytics-grid">
+                        <div class="stat-card">
+                            <h3>Total Reports</h3>
+                            <h2 class="text-primary" id="statTotal">0</h2>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Pending Issues</h3>
+                            <h2 class="text-warning" id="statPending">0</h2>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Resolved Issues</h3>
+                            <h2 class="text-success" id="statResolved">0</h2>
+                        </div>
+                    </div>
+
+                    <div class="charts-row">
+                        <div class="chart-card card">
+                            <h3>Category Distribution</h3>
+                            <div class="bar-chart" id="categoryChart">
+                                <!-- Bars populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

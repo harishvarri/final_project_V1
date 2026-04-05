@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-blue-50: #ecfdf5;  /* emerald-50 */
+  --color-blue-100: #d1fae5; /* emerald-100 */
+  --color-blue-200: #a7f3d0;
+  --color-blue-300: #6ee7b7;
+  --color-blue-400: #34d399;
+  --color-blue-500: #10b981;
+  --color-blue-600: #059669;
+  --color-blue-700: #047857;
+  --color-blue-800: #065f46;
+  --color-blue-900: #064e3b;
+  
+  --color-primary: #059669;
+  --color-primary-dark: #047857;
+  --color-primary-light: #34d399;
+  --color-accent: #f59e0b; /* amber action */
+  --color-surface: #f8fafc;
+  --color-surface-alt: #f1f5f9;
+}
+
+/* Base styles */
+body {
+  font-family: 'Noto Sans Telugu', 'Nirmala UI', 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--color-surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Gradient utilities */
+.gradient-blue {
+  background: linear-gradient(135deg, #059669 0%, #064e3b 100%);
+}
+.gradient-hero {
+  background: linear-gradient(135deg, #064e3b 0%, #059669 40%, #10b981 100%);
+}
+.gradient-purple {
+  background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+}
+.gradient-pink {
+  background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%);
+}
+.gradient-orange {
+  background: linear-gradient(135deg, #f59e0b 0%, #fb923c 100%);
+}
+.gradient-card-1 {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+.gradient-card-2 {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+.gradient-card-3 {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up { animation: fadeInUp 0.6s ease-out forwards; }
+.animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+.animate-slide-down { animation: slideDown 0.3s ease-out forwards; }

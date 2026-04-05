@@ -1,0 +1,119 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+civicenv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv
+.env
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.*
+!.env.example
+!frontend/.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ML Model files (large)
+*.h5
+*.pkl
+*.joblib
+*.pth
+*.onnx
+
+# Data files
+dataset/
+*.csv
+*.xlsx
+*.xls
+data/
+*.zip
+
+# Logs
+*.log
+logs/
+
+# Generated files
+*.png
+dataset_distribution.png
+tf_out.txt
+tf_path.txt
+tf_ver.txt
+pip_list.txt
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Node modules
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.vercel/
+frontend/.vercel/
+
+# OS
+.thumbs.db
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# Build outputs
+static/
+dist/
+build/
+
+# Uploads
+uploads/
+*.bak
+
+# Deployment-only exclusions
+api/__pycache__/
+model_reports/
+*.docx
+Appendix.txt
+
+# 🔹 Datasets
+dataset/
