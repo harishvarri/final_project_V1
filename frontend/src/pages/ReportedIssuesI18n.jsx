@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import { fetchComplaints } from '../services/api';
 import { formatCoordinates } from '../utils/location';
 
 const STATUS_COLORS = {
@@ -41,9 +42,7 @@ export default function ReportedIssuesI18n() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/user-complaints?user_email=${encodeURIComponent(user.email)}`);
-      if (!response.ok) throw new Error('Failed to fetch complaints');
-      const data = await response.json();
+      const data = await fetchComplaints(user.email, 'citizen');
       setComplaints(data || []);
     } catch {
       setError(l('Failed to load your reported issues', 'మీ నివేదించిన సమస్యలను లోడ్ చేయలేకపోయాం'));

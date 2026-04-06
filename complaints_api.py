@@ -2,13 +2,14 @@
 Complaints API endpoints with Supabase integration.
 """
 import logging
+import re
 from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 from flask import jsonify, request
 
 from storage_utils import upload_filestorage_to_supabase
-from supabase_client import get_supabase_client, is_supabase_configured
+from supabase_client import get_supabase_client, get_supabase_unavailable_reason, is_supabase_configured
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ def register_complaints_api(app):
     def supabase_or_error():
         if not is_supabase_configured():
             return None, (
-                jsonify({"error": "Supabase is not configured. Database-backed features are unavailable."}),
+                jsonify({"error": get_supabase_unavailable_reason()}),
                 503,
             )
         return get_supabase_client(), None
@@ -74,6 +75,44 @@ def register_complaints_api(app):
         if "violates check constraint" in lowered:
             return WORKER_ROLE_HINT
         return message
+
+    def extract_missing_column(error_obj):
+        message = ""
+        if isinstance(error_obj, dict):
+            message = error_obj.get("message") or ""
+        else:
+            message = str(error_obj or "")
+        match = re.search(r"Could not find the '([^']+)' column", message)
+        return match.group(1) if match else None
+
+    def update_complaint_with_retry(supabase, complaint_id, update_data, optional_fields=None):
+        payload = dict(update_data)
+        optional_fields = set(optional_fields or [])
+        removed_fields = []
+
+        for _ in range(len(optional_fields) + 1):
+            response = None
+            error = None
+            try:
+                response = supabase.from_('complaints').update(payload).eq('id', complaint_id).execute()
+                error = getattr(response, "error", None)
+            except Exception as exc:
+                error = exc
+
+            if error:
+                missing_field = extract_missing_column(error)
+                if missing_field and missing_field in payload and missing_field in optional_fields:
+                    removed_fields.append(missing_field)
+                    payload.pop(missing_field, None)
+                    continue
+                return None, error
+
+            if response and response.data:
+                return response.data[0], removed_fields
+
+            return None, "Complaint not found"
+
+        return None, f"Update failed after removing optional fields: {removed_fields}"
 
     @app.route("/api/complaints", methods=["GET"])
     def get_complaints():
@@ -279,6 +318,9 @@ def register_complaints_api(app):
             image_file = request.files["image"]
             voice_file = request.files.get("voice")
 
+            if image_file.filename == "":
+                return jsonify({"error": "No proof image selected"}), 400
+
             try:
                 proof_url = upload_filestorage_to_supabase(
                     image_file,
@@ -293,6 +335,10 @@ def register_complaints_api(app):
             voice_url = None
             if voice_file and voice_file.filename != "":
                 try:
+                    try:
+                        voice_file.stream.seek(0)
+                    except Exception:
+                        pass
                     voice_url = upload_filestorage_to_supabase(
                         voice_file,
                         bucket_name="complaints",
@@ -310,21 +356,32 @@ def register_complaints_api(app):
             if voice_url:
                 update_data["worker_voice_url"] = voice_url
 
-            response = supabase.from_('complaints').update(update_data).eq('id', complaint_id).execute()
+            updated_row, update_result = update_complaint_with_retry(
+                supabase,
+                complaint_id,
+                update_data,
+                optional_fields={"worker_voice_url", "updated_at"},
+            )
 
-            if not response.data:
-                return jsonify({"error": "Complaint not found"}), 404
+            if not updated_row:
+                if str(update_result) == "Complaint not found":
+                    return jsonify({"error": "Complaint not found"}), 404
+                return jsonify({
+                    "error": "Failed to update complaint after proof upload",
+                    "details": str(update_result),
+                }), 500
 
             logger.info("Proof uploaded for complaint %s", complaint_id)
             return jsonify({
                 "success": True,
                 "message": "Proof uploaded and sent to officer for approval",
-                "complaint": serialize_complaint(response.data[0])
+                "complaint": serialize_complaint(updated_row),
+                "ignored_optional_fields": update_result,
             }), 200
 
         except Exception as e:
             logger.error("Error uploading proof: %s", e)
-            return jsonify({"error": "Failed to upload proof"}), 500
+            return jsonify({"error": "Failed to upload proof", "details": str(e)}), 500
 
     @app.route("/api/analytics", methods=["GET"])
     def get_analytics():

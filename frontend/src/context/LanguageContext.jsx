@@ -3,6 +3,8 @@ import {
   formatDate,
   formatDateTime,
   getLocale,
+  hasMojibake,
+  repairLocalizedText,
   translateCategory,
   translateDepartment,
   translateMessage,
@@ -24,7 +26,7 @@ export function LanguageProvider({ children }) {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, language);
     }
-    document.documentElement.lang = language;
+    document.documentElement.lang = language === 'te' ? 'te' : 'en';
   }, [language]);
 
   const setLanguage = (value) => {
@@ -42,7 +44,23 @@ export function LanguageProvider({ children }) {
       locale: getLocale(language),
       setLanguage,
       toggleLanguage,
-      l: (english, telugu) => (language === 'te' ? telugu : english),
+      t: (key, fallback = key) => repairLocalizedText(translateMessage(language, key) || fallback),
+      l: (english, telugu) => {
+        if (language !== 'te') {
+          return repairLocalizedText(translateMessage('en', english) || english);
+        }
+
+        const localized = translateMessage('te', english);
+        if (localized && localized !== english) {
+          return repairLocalizedText(localized);
+        }
+
+        if (telugu && telugu !== english && !hasMojibake(telugu)) {
+          return repairLocalizedText(telugu);
+        }
+
+        return repairLocalizedText(translateMessage('en', english) || english);
+      },
       translateCategory: (value) => translateCategory(language, value),
       translateStatus: (value) => translateStatus(language, value),
       translatePriority: (value) => translatePriority(language, value),

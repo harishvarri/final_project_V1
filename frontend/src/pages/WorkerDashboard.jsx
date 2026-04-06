@@ -82,7 +82,7 @@ export default function WorkerDashboard() {
       setVoiceFile(null);
       loadData();
     } catch (err) {
-      toast.error('Upload failed. Try again.');
+      toast.error(err?.response?.data?.error || err?.message || 'Upload failed. Try again.');
     } finally {
       setUploading(false);
     }

@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+﻿import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Menu, X, Shield, LayoutDashboard, FileText, BarChart3, LogIn, LogOut, Home, CheckCircle2, Briefcase, Languages } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -6,7 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 export default function NavbarI18n() {
   const { user, logout, isAuthenticated } = useAuth();
-  const { language, setLanguage, l, translateRole } = useLanguage();
+  const { language, setLanguage, l, t, translateRole } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -17,16 +17,16 @@ export default function NavbarI18n() {
     navigate('/', { replace: true });
   };
 
-  const navLinks = [{ to: '/', label: l('Home', 'హోమ్'), icon: <Home size={16} /> }];
+  const navLinks = [{ to: '/', label: l('Home', 'Home'), icon: <Home size={16} /> }];
 
   if (!isAuthenticated || user?.role === 'citizen') {
-    navLinks.push({ to: '/report', label: l('Report Issue', 'ఫిర్యాదు నమోదు'), icon: <FileText size={16} /> });
+    navLinks.push({ to: '/report', label: l('Report Issue', 'Report Issue'), icon: <FileText size={16} /> });
   }
 
   if (isAuthenticated) {
     navLinks.push({
       to: '/reported-issues',
-      label: l('Your Issues', 'మీ ఫిర్యాదులు'),
+      label: l('Your Issues', 'Your Issues'),
       icon: <CheckCircle2 size={16} />,
       requireAuth: true,
     });
@@ -35,20 +35,20 @@ export default function NavbarI18n() {
   if (isAuthenticated && user?.role === 'worker') {
     navLinks.push({
       to: '/worker-dashboard',
-      label: l('My Tasks', 'నా పనులు'),
+      label: l('My Tasks', 'My Tasks'),
       icon: <Briefcase size={16} />,
       requireAuth: true,
     });
   }
 
   if (isAuthenticated && (user?.role === 'officer' || user?.role === 'admin')) {
-    navLinks.push({ to: '/dashboard', label: l('Dashboard', 'డ్యాష్‌బోర్డ్'), icon: <LayoutDashboard size={16} /> });
+    navLinks.push({ to: '/dashboard', label: l('Dashboard', 'Dashboard'), icon: <LayoutDashboard size={16} /> });
   }
 
   if (isAuthenticated && user?.role === 'admin') {
     navLinks.push(
-      { to: '/issues', label: l('All Issues', 'అన్ని సమస్యలు'), icon: <FileText size={16} /> },
-      { to: '/admin', label: l('Analytics', 'విశ్లేషణలు'), icon: <BarChart3 size={16} /> },
+      { to: '/issues', label: l('All Issues', 'All Issues'), icon: <FileText size={16} /> },
+      { to: '/admin', label: l('Analytics', 'Analytics'), icon: <BarChart3 size={16} /> },
     );
   }
 
@@ -84,6 +84,9 @@ export default function NavbarI18n() {
               <button
                 type="button"
                 onClick={() => setLanguage('en')}
+                aria-label={t('Switch interface language to English')}
+                aria-pressed={language === 'en'}
+                title={t('Switch interface language to English')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${language === 'en' ? 'bg-white text-blue-700' : 'text-blue-100 hover:bg-white/10'}`}
               >
                 EN
@@ -91,6 +94,10 @@ export default function NavbarI18n() {
               <button
                 type="button"
                 onClick={() => setLanguage('te')}
+                aria-label={t('Switch interface language to Telugu')}
+                aria-pressed={language === 'te'}
+                title={t('Switch interface language to Telugu')}
+                lang="te"
                 className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${language === 'te' ? 'bg-white text-blue-700' : 'text-blue-100 hover:bg-white/10'}`}
               >
                 తెలుగు
@@ -106,7 +113,7 @@ export default function NavbarI18n() {
                   onClick={handleLogout}
                   className="flex items-center gap-1 bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                 >
-                  <LogOut size={14} /> {l('Logout', 'లాగౌట్')}
+                  <LogOut size={14} /> {l('Logout', 'Logout')}
                 </button>
               </>
             ) : (
@@ -114,7 +121,7 @@ export default function NavbarI18n() {
                 to="/login"
                 className="flex items-center gap-1 bg-white text-blue-700 px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-blue-50 transition-colors"
               >
-                <LogIn size={14} /> {l('Login', 'లాగిన్')}
+                <LogIn size={14} /> {l('Login', 'Login')}
               </Link>
             )}
           </div>
@@ -129,11 +136,14 @@ export default function NavbarI18n() {
         <div className="md:hidden bg-blue-800 border-t border-blue-600 animate-slide-down">
           <div className="px-4 py-3 space-y-2">
             <div className="flex items-center justify-between rounded-lg bg-white/10 p-2">
-              <span className="text-xs font-semibold text-blue-100">{l('Language', 'భాష')}</span>
+              <span className="text-xs font-semibold text-blue-100">{l('Language', 'Language')}</span>
               <div className="flex items-center gap-1">
                 <button
                   type="button"
                   onClick={() => setLanguage('en')}
+                  aria-label={t('Switch interface language to English')}
+                  aria-pressed={language === 'en'}
+                  title={t('Switch interface language to English')}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${language === 'en' ? 'bg-white text-blue-700' : 'text-blue-100 hover:bg-white/10'}`}
                 >
                   EN
@@ -141,6 +151,10 @@ export default function NavbarI18n() {
                 <button
                   type="button"
                   onClick={() => setLanguage('te')}
+                  aria-label={t('Switch interface language to Telugu')}
+                  aria-pressed={language === 'te'}
+                  title={t('Switch interface language to Telugu')}
+                  lang="te"
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${language === 'te' ? 'bg-white text-blue-700' : 'text-blue-100 hover:bg-white/10'}`}
                 >
                   తెలుగు
@@ -171,7 +185,7 @@ export default function NavbarI18n() {
                   onClick={handleLogout}
                   className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-red-200 hover:bg-red-600/20 transition-colors"
                 >
-                  <LogOut size={14} /> {l('Logout', 'లాగౌట్')}
+                  <LogOut size={14} /> {l('Logout', 'Logout')}
                 </button>
               </div>
             ) : (
@@ -180,7 +194,7 @@ export default function NavbarI18n() {
                 onClick={() => setMobileOpen(false)}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white bg-white/10 hover:bg-white/20 transition-colors"
               >
-                <LogIn size={14} /> {l('Login', 'లాగిన్')}
+                <LogIn size={14} /> {l('Login', 'Login')}
               </Link>
             )}
           </div>
@@ -189,3 +203,4 @@ export default function NavbarI18n() {
     </nav>
   );
 }
+

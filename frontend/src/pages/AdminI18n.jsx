@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, BarChart3, CheckCircle2, Clock, Mail, Plus, RefreshCw, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, BarChart3, CheckCircle2, Clock, Mail, MapPin, Pencil, Plus, RefreshCw, TrendingUp, Users, Volume2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { assignUserRole, fetchAnalytics, fetchComplaints, getAllUsers } from '../services/api';
+import { assignUserRole, fetchAnalytics, fetchComplaints, getAllUsers, updateComplaint } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import Card from '../components/Card';
 import Button from '../components/Button';
+import ComplaintThumbnail from '../components/ComplaintThumbnail';
+import { formatCoordinates } from '../utils/location';
+import { resolveMediaUrl } from '../utils/media';
 
 const GRADIENT_CLASSES = ['gradient-card-1', 'gradient-card-2', 'gradient-card-3'];
 const DEPARTMENTS = [
@@ -17,6 +20,7 @@ const DEPARTMENTS = [
   'Infrastructure Department',
   'Urban Planning Department',
 ];
+const REROUTEABLE_STATUSES = ['submitted', 'reopened', 'in_review'];
 
 export default function AdminI18n() {
   const { user } = useAuth();
@@ -32,6 +36,27 @@ export default function AdminI18n() {
   const [assignRole, setAssignRole] = useState('officer');
   const [assignDept, setAssignDept] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [editingUserEmail, setEditingUserEmail] = useState(null);
+  const [selectedComplaint, setSelectedComplaint] = useState(null);
+  const [rerouteDept, setRerouteDept] = useState(DEPARTMENTS[0]);
+
+  const normalizeDepartmentOption = (department) =>
+    DEPARTMENTS.find((entry) => department?.includes(entry)) || DEPARTMENTS[0];
+
+  const resetUserForm = () => {
+    setAssignEmail('');
+    setAssignRole('officer');
+    setAssignDept('');
+    setEditingUserEmail(null);
+  };
+
+  const startEditingUser = (entry) => {
+    setEditingUserEmail(entry.email);
+    setAssignEmail(entry.email || '');
+    setAssignRole(entry.role || 'citizen');
+    setAssignDept(entry.department || '');
+    setActiveTab('users');
+  };
 
   useEffect(() => {
     if (!user?.email) return;
@@ -45,6 +70,11 @@ export default function AdminI18n() {
     }, 15000);
     return () => clearInterval(interval);
   }, [user?.role, user?.email, user?.department, activeTab]);
+
+  useEffect(() => {
+    if (!selectedComplaint) return;
+    setRerouteDept(normalizeDepartmentOption(selectedComplaint.department));
+  }, [selectedComplaint]);
 
   const loadData = async ({ silent = false } = {}) => {
     if (!silent) {
@@ -98,6 +128,59 @@ export default function AdminI18n() {
       toast.error(message);
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handleSaveUserRole = async (event) => {
+    event.preventDefault();
+    if (!assignEmail) {
+      toast.error(l('Please enter an email', 'Please enter an email'));
+      return;
+    }
+
+    setAssigning(true);
+    try {
+      const nextDepartment = ['officer', 'worker'].includes(assignRole) ? (assignDept || null) : null;
+      await assignUserRole(assignEmail, assignRole, nextDepartment, user?.email, user?.role);
+      toast.success(
+        editingUserEmail
+          ? l(`${assignEmail} updated as ${translateRole(assignRole)}`, `${assignEmail} updated as ${translateRole(assignRole)}`)
+          : l(`${assignEmail} assigned as ${translateRole(assignRole)}`, `${assignEmail} assigned as ${translateRole(assignRole)}`)
+      );
+      resetUserForm();
+      loadData({ silent: true });
+    } catch (reason) {
+      const details = reason.response?.data?.details;
+      const message = reason.response?.data?.error || l('Failed to assign role', 'Failed to assign role');
+      toast.error(details ? `${message}: ${details}` : message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const handleRerouteComplaint = async () => {
+    if (!selectedComplaint || !rerouteDept) return;
+    if (rerouteDept === normalizeDepartmentOption(selectedComplaint.department)) {
+      toast.error(l('Choose a different department to reroute this complaint.', 'ఈ ఫిర్యాదును మళ్లించడానికి వేరే శాఖను ఎంచుకోండి.'));
+      return;
+    }
+
+    try {
+      await updateComplaint(
+        selectedComplaint.id,
+        {
+          department: rerouteDept,
+          status: 'submitted',
+          worker_id: null,
+        },
+        user?.email,
+        user?.role,
+      );
+      toast.success(l(`Complaint forwarded to ${translateDepartment(rerouteDept)}.`, `${translateDepartment(rerouteDept)} శాఖకు ఫిర్యాదు మళ్లించబడింది.`));
+      setSelectedComplaint(null);
+      loadData({ silent: true });
+    } catch {
+      toast.error(l('Failed to forward complaint to the selected department.', 'ఎంచుకున్న శాఖకు ఫిర్యాదును మళ్లించలేకపోయాం.'));
     }
   };
 
@@ -258,9 +341,29 @@ export default function AdminI18n() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {complaints.map((complaint) => (
-                      <tr key={complaint.id} className="hover:bg-gray-50">
+                      <tr
+                        key={complaint.id}
+                        className={`cursor-pointer hover:bg-gray-50 ${resolveMediaUrl(complaint.citizen_voice_url) ? 'bg-blue-50/30' : ''}`}
+                        onClick={() => setSelectedComplaint(complaint)}
+                      >
                         <td className="px-4 py-3"><span className="text-xs text-gray-600 break-all">{complaint.user_email}</span></td>
-                        <td className="px-4 py-3"><span className="capitalize text-gray-700">{translateCategory(complaint.category)}</span></td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            <span className="capitalize text-gray-700">{translateCategory(complaint.category)}</span>
+                            <div className="flex flex-wrap gap-2">
+                              {resolveMediaUrl(complaint.citizen_voice_url) && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700">
+                                  <Volume2 size={12} /> {l('Citizen Voice', 'Citizen Voice')}
+                                </span>
+                              )}
+                              {resolveMediaUrl(complaint.worker_voice_url) && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                                  <Volume2 size={12} /> {l('Worker Voice', 'Worker Voice')}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
                         <td className="px-4 py-3"><span className="text-gray-700 text-xs">{translateDepartment(complaint.department)}</span></td>
                         <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{translatePriority(complaint.priority)}</span></td>
                         <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs font-semibold capitalize bg-gray-100 text-gray-700">{translateStatus(complaint.status)}</span></td>
@@ -280,17 +383,29 @@ export default function AdminI18n() {
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Plus size={20} /> {l('Assign Role', 'పాత్ర కేటాయించండి')}
               </h3>
-              <form onSubmit={handleAssignRole} className="space-y-4">
+              {editingUserEmail && (
+                <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  {l('Updating role and department for', 'Updating role and department for')} <span className="font-semibold">{editingUserEmail}</span>
+                </div>
+              )}
+              <form onSubmit={handleSaveUserRole} className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">{l('Email', 'ఇమెయిల్')}</label>
-                  <input type="email" value={assignEmail} onChange={(event) => setAssignEmail(event.target.value)} placeholder="user@example.com" className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                  <input type="email" value={assignEmail} onChange={(event) => setAssignEmail(event.target.value)} disabled={Boolean(editingUserEmail)} placeholder="user@example.com" className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500" />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">{l('Role', 'పాత్ర')}</label>
-                  <select value={assignRole} onChange={(event) => setAssignRole(event.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+                  <select value={assignRole} onChange={(event) => {
+                    const nextRole = event.target.value;
+                    setAssignRole(nextRole);
+                    if (!['officer', 'worker'].includes(nextRole)) {
+                      setAssignDept('');
+                    }
+                  }} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm">
                     <option value="citizen">{translateRole('citizen')}</option>
                     <option value="officer">{translateRole('officer')}</option>
                     <option value="worker">{translateRole('worker')}</option>
+                    <option value="admin">{translateRole('admin')}</option>
                   </select>
                 </div>
                 {(assignRole === 'officer' || assignRole === 'worker') && (
@@ -309,6 +424,11 @@ export default function AdminI18n() {
                 <Button type="submit" disabled={assigning} className="w-full">
                   {assigning ? l('Assigning...', 'కేటాయిస్తోంది...') : l('Assign Role', 'పాత్ర కేటాయించండి')}
                 </Button>
+                {editingUserEmail && (
+                  <Button type="button" variant="outline" onClick={resetUserForm} className="w-full">
+                    {l('Cancel Editing', 'Cancel Editing')}
+                  </Button>
+                )}
               </form>
             </Card>
 
@@ -341,7 +461,12 @@ export default function AdminI18n() {
                               <span className="px-2 py-1 rounded-full text-xs font-semibold capitalize bg-gray-100 text-gray-700">{translateRole(entry.role)}</span>
                             </td>
                             <td className="px-4 py-3">
-                              <span className="text-gray-600 text-xs">{entry.department ? translateDepartment(entry.department) : '-'}</span>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-gray-600 text-xs">{entry.department ? translateDepartment(entry.department) : '-'}</span>
+                                <Button type="button" variant="outline" onClick={() => startEditingUser(entry)} className="!px-3 !py-2 !text-xs">
+                                  <Pencil size={14} /> {l('Edit', 'Edit')}
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -354,6 +479,126 @@ export default function AdminI18n() {
           </div>
         )}
       </div>
+
+      {selectedComplaint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">{translateCategory(selectedComplaint.category)}</h3>
+                <p className="text-xs text-gray-500">{l('Complaint ID', 'Complaint ID')}: {selectedComplaint.id?.substring(0, 8)}</p>
+              </div>
+              <button onClick={() => setSelectedComplaint(null)} className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(90vh-73px)] overflow-y-auto p-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase text-gray-500">{l('Citizen Report', 'Citizen Report')}</p>
+                  <ComplaintThumbnail
+                    src={selectedComplaint.image_url}
+                    alt={translateCategory(selectedComplaint.category)}
+                    className="mb-3 h-56 w-full rounded-xl border border-gray-100 object-cover shadow-sm"
+                    emptyLabel={l('No image available', 'No image available')}
+                    openInNewTab
+                  />
+                  {resolveMediaUrl(selectedComplaint.citizen_voice_url) ? (
+                    <>
+                      <p className="mb-2 text-xs font-semibold uppercase text-blue-700">{l('Citizen Voice Note', 'Citizen Voice Note')}</p>
+                      <audio src={resolveMediaUrl(selectedComplaint.citizen_voice_url)} controls className="h-10 w-full outline-none" preload="none" />
+                    </>
+                  ) : (
+                    <p className="rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-500">{l('No citizen voice note attached.', 'No citizen voice note attached.')}</p>
+                  )}
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase text-emerald-600">{l('Work Proof', 'Work Proof')}</p>
+                  <ComplaintThumbnail
+                    src={selectedComplaint.proof_url}
+                    alt={l('Proof of work', 'Proof of work')}
+                    className="mb-3 h-56 w-full rounded-xl border border-emerald-200 object-cover shadow-sm"
+                    emptyLabel={l('No proof image uploaded yet', 'No proof image uploaded yet')}
+                    openInNewTab
+                  />
+                  {resolveMediaUrl(selectedComplaint.worker_voice_url) ? (
+                    <>
+                      <p className="mb-2 text-xs font-semibold uppercase text-emerald-700">{l('Worker Voice Note', 'Worker Voice Note')}</p>
+                      <audio src={resolveMediaUrl(selectedComplaint.worker_voice_url)} controls className="h-10 w-full outline-none" preload="none" />
+                    </>
+                  ) : (
+                    <p className="rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-500">{l('No worker voice note uploaded yet.', 'No worker voice note uploaded yet.')}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4 md:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{l('Department', 'Department')}</p>
+                  <p className="text-sm text-gray-800">{translateDepartment(selectedComplaint.department)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{l('Status', 'Status')}</p>
+                  <p className="text-sm text-gray-800">{translateStatus(selectedComplaint.status)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{l('Priority', 'Priority')}</p>
+                  <p className="text-sm text-gray-800">{translatePriority(selectedComplaint.priority)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{l('Reported On', 'Reported On')}</p>
+                  <p className="text-sm text-gray-800">{formatDate(selectedComplaint.created_at)}</p>
+                </div>
+                <div className="md:col-span-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{l('Location', 'Location')}</p>
+                  <p className="text-sm text-blue-700">
+                    <MapPin size={12} className="mr-1 inline" />
+                    {selectedComplaint.location_name || formatCoordinates(selectedComplaint.latitude, selectedComplaint.longitude)}
+                  </p>
+                  {selectedComplaint.location_name && (
+                    <p className="mt-1 text-xs text-gray-500">{formatCoordinates(selectedComplaint.latitude, selectedComplaint.longitude)}</p>
+                  )}
+                </div>
+              </div>
+
+              {REROUTEABLE_STATUSES.includes(selectedComplaint.status) && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700">{l('Wrong Department?', 'తప్పు శాఖా?')}</p>
+                  <h4 className="mt-1 text-sm font-semibold text-gray-800">{l('Manually forward this case', 'ఈ కేసును మాన్యువల్‌గా మళ్లించండి')}</h4>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {l('If the model classified this image incorrectly, forward it to the correct department. The complaint will return to the unassigned queue.', 'మోడల్ ఈ చిత్రాన్ని తప్పుగా వర్గీకరిస్తే, సరైన శాఖకు మళ్లించండి. ఫిర్యాదు మళ్లీ అసైన్ చేయని క్యూ లోకి వెళ్తుంది.')}
+                  </p>
+                  <div className="mt-4 flex flex-col gap-3 md:flex-row">
+                    <select
+                      value={rerouteDept}
+                      onChange={(event) => setRerouteDept(event.target.value)}
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-300"
+                    >
+                      {DEPARTMENTS.map((department) => (
+                        <option key={department} value={department}>
+                          {translateDepartment(department)}
+                        </option>
+                      ))}
+                    </select>
+                    <Button onClick={handleRerouteComplaint} disabled={rerouteDept === normalizeDepartmentOption(selectedComplaint.department)} className="w-full bg-amber-600 hover:bg-amber-700 md:w-auto">
+                      {l('Forward Case', 'కేసును మళ్లించండి')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {selectedComplaint.notes && (
+                <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-blue-800">{l('Officer Notes', 'Officer Notes')}</p>
+                  <p className="mt-1 text-sm text-blue-900">{selectedComplaint.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

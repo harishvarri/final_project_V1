@@ -9,6 +9,8 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import VoiceRecorderI18n from '../components/VoiceRecorderI18n';
 
+const REPORT_MODE = (import.meta.env.VITE_REPORT_API_MODE || 'backend').trim().toLowerCase();
+
 export default function ReportI18n() {
   const { user } = useAuth();
   const { l, translateCategory, translateDepartment, translatePriority, translateStatus, translateMessage } = useLanguage();
@@ -72,13 +74,17 @@ export default function ReportI18n() {
       }
 
       toast.success(translateMessage('Complaint submitted successfully!'));
-      if (user?.email) {
-        navigate('/reported-issues');
-      } else {
+      if (data?.warning) {
+        toast.error(translateMessage(data.warning));
+      }
+
+      if (REPORT_MODE === 'gradio' || !user?.email) {
         setResult(data);
+      } else {
+        navigate('/reported-issues');
       }
     } catch (error) {
-      toast.error(translateMessage(error.response?.data?.error || 'Submission failed. Please try again.'));
+      toast.error(translateMessage(error.response?.data?.error || error.message || 'Submission failed. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -213,12 +219,22 @@ export default function ReportI18n() {
                     <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{l('Status', 'స్థితి')}</p>
                     <span
                       className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
-                        result.status === 'needs_manual_review' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'
+                        result.status === 'needs_manual_review'
+                          ? 'bg-amber-100 text-amber-700'
+                          : result.status === 'classified_only'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-green-100 text-green-700'
                       }`}
                     >
                       {translateStatus(result.status)}
                     </span>
                   </div>
+
+                  {result.warning && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      {result.warning}
+                    </div>
+                  )}
 
                   {result.top3?.length > 0 && (
                     <div>

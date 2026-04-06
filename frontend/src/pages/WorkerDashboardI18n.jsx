@@ -74,7 +74,7 @@ export default function WorkerDashboardI18n() {
           return new Date(right.created_at) - new Date(left.created_at);
         }),
       );
-    } catch {
+    } catch (error) {
       if (!isBackground) toast.error(l('Failed to load tasks', 'పనులను లోడ్ చేయలేకపోయాం'));
     } finally {
       if (!isBackground) setLoading(false);
@@ -86,7 +86,7 @@ export default function WorkerDashboardI18n() {
       await updateComplaint(id, { status: 'in_progress' }, user?.email, user?.role);
       toast.success(l('Task started! Stay safe.', 'పని ప్రారంభించబడింది! జాగ్రత్తగా ఉండండి.'));
       loadData();
-    } catch {
+    } catch (error) {
       toast.error(l('Failed to update task', 'పని స్థితి నవీకరించలేకపోయాం'));
     }
   };
@@ -101,8 +101,8 @@ export default function WorkerDashboardI18n() {
       setProofImage(null);
       setVoiceFile(null);
       loadData();
-    } catch {
-      toast.error(l('Upload failed. Try again.', 'అప్లోడ్ విఫలమైంది. మళ్లీ ప్రయత్నించండి.'));
+    } catch (error) {
+      toast.error(error?.response?.data?.error || error?.message || l('Upload failed. Try again.', 'అప్లోడ్ విఫలమైంది. మళ్లీ ప్రయత్నించండి.'));
     } finally {
       setUploading(false);
     }

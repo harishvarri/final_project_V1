@@ -40,9 +40,9 @@ export default function IssuesI18n() {
     setError(null);
     try {
       const data = await fetchComplaints(user?.email, user?.role);
-      setComplaints(data || []);
+      setComplaints(Array.isArray(data) ? data : []);
     } catch {
-      setError(l('Failed to fetch issues', 'à°¸à°®à°¸à±à°¯à°²à°¨à± à°ªà±Šà°‚à°¦à°²à±‡à°•à°ªà±‹à°¯à°¾à°‚'));
+      setError(l('Failed to fetch issues', 'Failed to fetch issues'));
     } finally {
       setLoading(false);
     }
@@ -63,18 +63,18 @@ export default function IssuesI18n() {
       <div className="gradient-blue text-white py-6 px-4">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <FileText size={22} /> {l('All Civic Issues', 'à°…à°¨à±à°¨à°¿ à°ªà±Œà°° à°¸à°®à°¸à±à°¯à°²à±')}
+            <FileText size={22} /> {l('All Civic Issues', 'All Civic Issues')}
           </h1>
-          <p className="text-blue-100 text-sm mt-0.5">{l('Track all reported issues and their status', 'à°¨à°¿à°µà±‡à°¦à°¿à°‚à°šà°¿à°¨ à°…à°¨à±à°¨à°¿ à°¸à°®à°¸à±à°¯à°²à± à°®à°°à°¿à°¯à± à°µà°¾à°Ÿà°¿ à°¸à±à°¥à°¿à°¤à°¿à°¨à°¿ à°Ÿà±à°°à°¾à°•à± à°šà±‡à°¯à°‚à°¡à°¿')}</p>
+          <p className="text-blue-100 text-sm mt-0.5">{l('Track all reported issues and their status', 'Track all reported issues and their status')}</p>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         <Card className="p-4 mb-6" hover={false}>
-          <h3 className="text-sm font-bold text-blue-600 mb-3">{l('Filters', 'à°«à°¿à°²à±à°Ÿà°°à±à°²à±')}</h3>
+          <h3 className="text-sm font-bold text-blue-600 mb-3">{l('Filters', 'Filters')}</h3>
           <div className="grid sm:grid-cols-3 gap-3">
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">{l('Status', 'à°¸à±à°¥à°¿à°¤à°¿')}</label>
+              <label className="text-xs text-gray-500 mb-1 block">{l('Status', 'Status')}</label>
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                 <option value="all">{l('All Status', 'All Status')}</option>
                 <option value="submitted">{translateStatus('submitted')}</option>
@@ -88,9 +88,9 @@ export default function IssuesI18n() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">{l('Category', 'à°µà°°à±à°—à°‚')}</label>
+              <label className="text-xs text-gray-500 mb-1 block">{l('Category', 'Category')}</label>
               <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                <option value="all">{l('All Categories', 'à°…à°¨à±à°¨à°¿ à°µà°°à±à°—à°¾à°²à±')}</option>
+                <option value="all">{l('All Categories', 'All Categories')}</option>
                 {CATEGORIES.map((category) => (
                   <option key={category} value={category}>
                     {translateCategory(category)}
@@ -99,13 +99,13 @@ export default function IssuesI18n() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">{l('Search', 'à°¶à±‹à°§à°¨')}</label>
+              <label className="text-xs text-gray-500 mb-1 block">{l('Search', 'Search')}</label>
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-2.5 text-gray-400" />
                 <input
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder={l('Search issues...', 'à°¸à°®à°¸à±à°¯à°²à°¨à± à°¶à±‹à°§à°¿à°‚à°šà°‚à°¡à°¿...')}
+                  placeholder={l('Search issues...', 'Search issues...')}
                   className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
@@ -116,7 +116,7 @@ export default function IssuesI18n() {
         {loading ? (
           <Card className="p-12 text-center">
             <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-gray-500">{l('Loading issues...', 'à°¸à°®à°¸à±à°¯à°²à± à°²à±‹à°¡à± à°…à°µà±à°¤à±à°¨à±à°¨à°¾à°¯à°¿...')}</p>
+            <p className="text-gray-500">{l('Loading issues...', 'Loading issues...')}</p>
           </Card>
         ) : error ? (
           <Card className="p-12 text-center">
@@ -125,7 +125,7 @@ export default function IssuesI18n() {
           </Card>
         ) : filtered.length === 0 ? (
           <Card className="p-12 text-center">
-            <p className="text-gray-400">{l('No issues found matching your filters.', 'à°®à±€ à°«à°¿à°²à±à°Ÿà°°à±à°²à°•à± à°¸à°°à°¿à°ªà°¡à±‡ à°¸à°®à°¸à±à°¯à°²à± à°•à°¨à°¬à°¡à°²à±‡à°¦à±.')}</p>
+            <p className="text-gray-400">{l('No issues found matching your filters.', 'No issues found matching your filters.')}</p>
           </Card>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -135,7 +135,7 @@ export default function IssuesI18n() {
                   src={complaint.image_url}
                   alt={translateCategory(complaint.category)}
                   className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
-                  emptyLabel={l('No image available', 'à°šà°¿à°¤à±à°°à°‚ à°…à°‚à°¦à±à°¬à°¾à°Ÿà±à°²à±‹ à°²à±‡à°¦à±')}
+                  emptyLabel={l('No image available', 'No image available')}
                   openInNewTab
                 />
                 <div className="p-4">
@@ -146,7 +146,7 @@ export default function IssuesI18n() {
                   <p className="text-sm text-gray-600 truncate">{translateDepartment(complaint.department)}</p>
                   <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
                     <span>
-                      {l('Priority', 'à°ªà±à°°à°¾à°§à°¾à°¨à±à°¯à°¤')}: <span className="font-semibold text-gray-600">{translatePriority(complaint.priority)}</span>
+                      {l('Priority', 'Priority')}: <span className="font-semibold text-gray-600">{translatePriority(complaint.priority)}</span>
                     </span>
                     <span>{formatDate(complaint.created_at)}</span>
                   </div>
@@ -159,5 +159,4 @@ export default function IssuesI18n() {
     </div>
   );
 }
-
 

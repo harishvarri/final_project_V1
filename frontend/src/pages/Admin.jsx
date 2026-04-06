@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import ComplaintThumbnail from '../components/ComplaintThumbnail';
 import Card from '../components/Card';
 import Button from '../components/Button';
-import { fetchAnalytics, fetchComplaints, getAllUsers, assignUserRole } from '../services/api';
+import { fetchAnalytics, fetchComplaints, getAllUsers, assignUserRole, updateComplaint } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { BarChart3, RefreshCw, AlertCircle, TrendingUp, CheckCircle2, Clock, Users, Mail, Plus } from 'lucide-react';
+import { BarChart3, RefreshCw, AlertCircle, TrendingUp, CheckCircle2, Clock, Users, Mail, Pencil, Plus, MapPin, Volume2, X } from 'lucide-react';
+import { resolveMediaUrl } from '../utils/media';
 
 const GRADIENT_CLASSES = ['gradient-card-1', 'gradient-card-2', 'gradient-card-3'];
 const DEPARTMENTS = [
@@ -16,6 +18,7 @@ const DEPARTMENTS = [
   'Infrastructure Department',
   'Urban Planning Department'
 ];
+const REROUTEABLE_STATUSES = ['submitted', 'reopened', 'in_review'];
 
 export default function Admin() {
   const { user } = useAuth();
@@ -27,12 +30,34 @@ export default function Admin() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, complaints, users
+  const [selectedComplaint, setSelectedComplaint] = useState(null);
+  const [rerouteDept, setRerouteDept] = useState(DEPARTMENTS[0]);
+  const [rerouting, setRerouting] = useState(false);
   
   // Role management form state
   const [assignEmail, setAssignEmail] = useState('');
   const [assignRole, setAssignRole] = useState('officer');
   const [assignDept, setAssignDept] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [editingUserEmail, setEditingUserEmail] = useState(null);
+
+  const normalizeDepartmentOption = (department) =>
+    DEPARTMENTS.find((entry) => department?.includes(entry)) || DEPARTMENTS[0];
+
+  const resetUserForm = () => {
+    setAssignEmail('');
+    setAssignRole('officer');
+    setAssignDept('');
+    setEditingUserEmail(null);
+  };
+
+  const startEditingUser = (entry) => {
+    setEditingUserEmail(entry.email);
+    setAssignEmail(entry.email || '');
+    setAssignRole(entry.role || 'citizen');
+    setAssignDept(entry.department || '');
+    setActiveTab('users');
+  };
 
   useEffect(() => {
     if (!user?.email) return;
@@ -47,6 +72,12 @@ export default function Admin() {
     }, 15000); // refresh every 15 seconds so new reports show up quickly
     return () => clearInterval(interval);
   }, [user?.role, user?.email, user?.department, activeTab]);
+
+  useEffect(() => {
+    if (!selectedComplaint) return;
+    setRerouteDept(normalizeDepartmentOption(selectedComplaint.department));
+    setRerouting(false);
+  }, [selectedComplaint]);
 
   const loadData = async ({ silent = false } = {}) => {
     if (!silent) {
@@ -96,11 +127,10 @@ export default function Admin() {
 
     setAssigning(true);
     try {
-      await assignUserRole(assignEmail, assignRole, assignDept || null, user?.email, user?.role);
-      toast.success(`${assignEmail} assigned as ${assignRole}`);
-      setAssignEmail('');
-      setAssignRole('officer');
-      setAssignDept('');
+      const nextDepartment = ['officer', 'worker'].includes(assignRole) ? (assignDept || null) : null;
+      await assignUserRole(assignEmail, assignRole, nextDepartment, user?.email, user?.role);
+      toast.success(editingUserEmail ? `${assignEmail} updated as ${assignRole}` : `${assignEmail} assigned as ${assignRole}`);
+      resetUserForm();
       loadData({ silent: true }); // Refresh users without interrupting the form
     } catch (err) {
       const details = err.response?.data?.details;
@@ -108,6 +138,35 @@ export default function Admin() {
       toast.error(details ? `${message}: ${details}` : message);
     } finally {
       setAssigning(false);
+    }
+  };
+
+  const handleRerouteComplaint = async () => {
+    if (!selectedComplaint || !rerouteDept) return;
+    if (rerouteDept === normalizeDepartmentOption(selectedComplaint.department)) {
+      toast.error('Choose a different department to reroute this complaint.');
+      return;
+    }
+
+    setRerouting(true);
+    try {
+      await updateComplaint(
+        selectedComplaint.id,
+        {
+          department: rerouteDept,
+          status: 'submitted',
+          worker_id: null,
+        },
+        user?.email,
+        user?.role,
+      );
+      toast.success(`Complaint forwarded to ${rerouteDept}.`);
+      setSelectedComplaint(null);
+      loadData({ silent: true });
+    } catch {
+      toast.error('Failed to forward complaint to the selected department.');
+    } finally {
+      setRerouting(false);
     }
   };
 
@@ -292,12 +351,26 @@ export default function Admin() {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {complaints.map((complaint) => (
-                      <tr key={complaint.id} className="hover:bg-gray-50">
+                      <tr key={complaint.id} className={`cursor-pointer hover:bg-gray-50 ${resolveMediaUrl(complaint.citizen_voice_url) ? 'bg-blue-50/30' : ''}`} onClick={() => setSelectedComplaint(complaint)}>
                         <td className="px-4 py-3">
                           <span className="text-xs text-gray-600 break-all">{complaint.user_email}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="capitalize text-gray-700">{complaint.category?.replace('_', ' ')}</span>
+                          <div className="flex flex-col gap-1">
+                            <span className="capitalize text-gray-700">{complaint.category?.replace('_', ' ')}</span>
+                            <div className="flex flex-wrap gap-2">
+                              {resolveMediaUrl(complaint.citizen_voice_url) && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700">
+                                  <Volume2 size={12} /> Citizen Voice
+                                </span>
+                              )}
+                              {resolveMediaUrl(complaint.worker_voice_url) && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+                                  <Volume2 size={12} /> Worker Voice
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-gray-700 text-xs">{complaint.department}</span>
@@ -338,8 +411,13 @@ export default function Admin() {
             {/* Assign Role Form */}
             <Card className="p-6 h-fit" hover={false}>
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Plus size={20} /> Assign Role
+                <Plus size={20} /> {editingUserEmail ? 'Edit User' : 'Assign Role'}
               </h3>
+              {editingUserEmail && (
+                <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  Updating role and department for <span className="font-semibold">{editingUserEmail}</span>
+                </div>
+              )}
               <form onSubmit={handleAssignRole} className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Email</label>
@@ -347,20 +425,28 @@ export default function Admin() {
                     type="email"
                     value={assignEmail}
                     onChange={(e) => setAssignEmail(e.target.value)}
+                    disabled={Boolean(editingUserEmail)}
                     placeholder="user@example.com"
-                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-gray-100 disabled:text-gray-500"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Role</label>
                   <select
                     value={assignRole}
-                    onChange={(e) => setAssignRole(e.target.value)}
+                    onChange={(e) => {
+                      const nextRole = e.target.value;
+                      setAssignRole(nextRole);
+                      if (!['officer', 'worker'].includes(nextRole)) {
+                        setAssignDept('');
+                      }
+                    }}
                     className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                   >
                     <option value="citizen">Citizen</option>
                     <option value="officer">Officer</option>
                     <option value="worker">Worker</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
                 {(assignRole === 'officer' || assignRole === 'worker') && (
@@ -383,8 +469,18 @@ export default function Admin() {
                   disabled={assigning}
                   className="w-full"
                 >
-                  {assigning ? 'Assigning...' : 'Assign Role'}
+                  {assigning ? 'Saving...' : editingUserEmail ? 'Save Changes' : 'Assign Role'}
                 </Button>
+                {editingUserEmail && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={resetUserForm}
+                    className="w-full"
+                  >
+                    Cancel Editing
+                  </Button>
+                )}
               </form>
             </Card>
 
@@ -425,7 +521,12 @@ export default function Admin() {
                               </span>
                             </td>
                             <td className="px-4 py-3">
-                              <span className="text-gray-600 text-xs">{u.department || '-'}</span>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-gray-600 text-xs">{u.department || '-'}</span>
+                                <Button type="button" variant="outline" onClick={() => startEditingUser(u)} className="!px-3 !py-2 !text-xs">
+                                  <Pencil size={14} /> Edit
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -438,6 +539,132 @@ export default function Admin() {
           </div>
         )}
       </div>
+
+      {selectedComplaint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/60 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 capitalize">{selectedComplaint.category?.replace('_', ' ')}</h3>
+                <p className="text-xs text-gray-500">Complaint ID: {selectedComplaint.id?.substring(0, 8)}</p>
+              </div>
+              <button onClick={() => setSelectedComplaint(null)} className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(90vh-73px)] overflow-y-auto p-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase text-gray-500">Citizen Report</p>
+                  <ComplaintThumbnail
+                    src={selectedComplaint.image_url}
+                    alt={selectedComplaint.category?.replace('_', ' ') || 'Complaint'}
+                    className="mb-3 h-56 w-full rounded-xl border border-gray-100 object-cover shadow-sm"
+                    emptyLabel="No image available"
+                    openInNewTab
+                  />
+                  {resolveMediaUrl(selectedComplaint.citizen_voice_url) ? (
+                    <>
+                      <p className="mb-2 text-xs font-semibold uppercase text-blue-700">Citizen Voice Note</p>
+                      <audio src={resolveMediaUrl(selectedComplaint.citizen_voice_url)} controls className="h-10 w-full outline-none" preload="none" />
+                    </>
+                  ) : (
+                    <p className="rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-500">No citizen voice note attached.</p>
+                  )}
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase text-emerald-600">Work Proof</p>
+                  <ComplaintThumbnail
+                    src={selectedComplaint.proof_url}
+                    alt="Proof of work"
+                    className="mb-3 h-56 w-full rounded-xl border border-emerald-200 object-cover shadow-sm"
+                    emptyLabel="No proof image uploaded yet"
+                    openInNewTab
+                  />
+                  {resolveMediaUrl(selectedComplaint.worker_voice_url) ? (
+                    <>
+                      <p className="mb-2 text-xs font-semibold uppercase text-emerald-700">Worker Voice Note</p>
+                      <audio src={resolveMediaUrl(selectedComplaint.worker_voice_url)} controls className="h-10 w-full outline-none" preload="none" />
+                    </>
+                  ) : (
+                    <p className="rounded-xl bg-gray-50 px-3 py-2 text-sm text-gray-500">No worker voice note uploaded yet.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4 md:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Department</p>
+                  <p className="text-sm text-gray-800">{selectedComplaint.department}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Status</p>
+                  <p className="text-sm text-gray-800 capitalize">{selectedComplaint.status?.replace('_', ' ')}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Priority</p>
+                  <p className="text-sm text-gray-800">{selectedComplaint.priority}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Reported On</p>
+                  <p className="text-sm text-gray-800">{selectedComplaint.created_at ? new Date(selectedComplaint.created_at).toLocaleString() : '--'}</p>
+                </div>
+                <div className="md:col-span-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Location</p>
+                  <p className="text-sm text-blue-700">
+                    <MapPin size={12} className="mr-1 inline" />
+                    {selectedComplaint.location_name || `${selectedComplaint.latitude?.toFixed?.(4) ?? '--'}, ${selectedComplaint.longitude?.toFixed?.(4) ?? '--'}`}
+                  </p>
+                  {selectedComplaint.location_name && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      {selectedComplaint.latitude?.toFixed?.(4) ?? '--'}, {selectedComplaint.longitude?.toFixed?.(4) ?? '--'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {REROUTEABLE_STATUSES.includes(selectedComplaint.status) && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-xs font-bold uppercase tracking-wider text-amber-700">Wrong Department?</p>
+                  <h4 className="mt-1 text-sm font-semibold text-gray-800">Manually forward this case</h4>
+                  <p className="mt-1 text-sm text-gray-600">
+                    If the AI classified this image incorrectly, forward it to the correct department. The complaint will return to the unassigned queue.
+                  </p>
+                  <div className="mt-4 flex flex-col gap-3 md:flex-row">
+                    <select
+                      value={rerouteDept}
+                      onChange={(e) => setRerouteDept(e.target.value)}
+                      className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-300"
+                    >
+                      {DEPARTMENTS.map((department) => (
+                        <option key={department} value={department}>
+                          {department}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      onClick={handleRerouteComplaint}
+                      disabled={rerouting || rerouteDept === normalizeDepartmentOption(selectedComplaint.department)}
+                      className="w-full bg-amber-600 hover:bg-amber-700 md:w-auto"
+                    >
+                      {rerouting ? 'Forwarding...' : 'Forward Case'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {selectedComplaint.notes && (
+                <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-blue-800">Officer Notes</p>
+                  <p className="mt-1 text-sm text-blue-900">{selectedComplaint.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

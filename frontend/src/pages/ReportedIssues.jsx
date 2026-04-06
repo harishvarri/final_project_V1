@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/Card';
+import { fetchComplaints } from '../services/api';
 import { FileText, AlertCircle, CheckCircle2, Clock, MapPin, RefreshCw } from 'lucide-react';
 import Button from '../components/Button';
 
@@ -38,11 +39,9 @@ export default function ReportedIssues() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/user-complaints?user_email=${encodeURIComponent(user.email)}`);
-      if (!response.ok) throw new Error('Failed to fetch complaints');
-      const data = await response.json();
+      const data = await fetchComplaints(user.email, 'citizen');
       setComplaints(data || []);
-    } catch (err) {
+    } catch {
       setError('Failed to load your reported issues');
     } finally {
       setLoading(false);

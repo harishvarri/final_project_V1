@@ -32,7 +32,7 @@ export default function Issues() {
     setError(null);
     try {
       const data = await fetchComplaints(user?.email, user?.role);
-      setComplaints(data);
+      setComplaints(Array.isArray(data) ? data : []);
     } catch {
       setError('Failed to fetch issues');
     } finally {
