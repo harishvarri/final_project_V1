@@ -45,6 +45,15 @@ const api = axios.create({
   timeout: 60000,
 });
 
+const createMissingApiError = (message = 'Backend API is unavailable.') => {
+  const error = new Error(message);
+  error.isMissingApi = true;
+  return error;
+};
+
+const isLikelyHtmlDocument = (payload) =>
+  typeof payload === 'string' && /^\s*</.test(payload);
+
 const normalizeCategoryKey = (value = '') => {
   const normalized = String(value || '')
     .trim()
@@ -101,8 +110,14 @@ const normalizeTopPrediction = (raw) => {
 };
 
 const shouldUseSupabaseFallback = (error) => {
+  if (error?.isMissingApi) return true;
+
   const status = error?.response?.status;
-  if ([500, 502, 503, 504].includes(status)) return true;
+  if ([404, 405, 500, 502, 503, 504].includes(status)) return true;
+
+  const contentType = String(error?.response?.headers?.['content-type'] || '').toLowerCase();
+  if (contentType.includes('text/html') || isLikelyHtmlDocument(error?.response?.data)) return true;
+
   if (!error?.response) return true;
 
   const message = String(error?.message || '').toLowerCase();
@@ -582,6 +597,9 @@ export const uploadComplaint = async (imageFile, priority, voiceFile = null, use
     const response = await api.post('/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    if (!response?.data || isLikelyHtmlDocument(response.data)) {
+      throw createMissingApiError('Backend upload API returned an invalid response.');
+    }
     return mergePersistedResponse(response.data);
   } catch (error) {
     if (shouldUseSupabaseFallback(error)) {
@@ -608,6 +626,9 @@ export const fetchComplaints = async (userEmail = null, userRole = null, userDep
   try {
     const response = await api.get(`/complaints${params.toString() ? '?' + params.toString() : ''}`);
     const payload = response?.data;
+    if (isLikelyHtmlDocument(payload)) {
+      throw createMissingApiError('Backend complaints API returned HTML instead of JSON.');
+    }
     if (Array.isArray(payload)) return payload;
     if (Array.isArray(payload?.data)) return payload.data;
     return [];
@@ -622,6 +643,9 @@ export const fetchComplaints = async (userEmail = null, userRole = null, userDep
 export const fetchAnalytics = async () => {
   try {
     const response = await api.get('/analytics');
+    if (!response?.data || isLikelyHtmlDocument(response.data)) {
+      throw createMissingApiError('Backend analytics API returned an invalid response.');
+    }
     return response.data;
   } catch (error) {
     if (shouldUseSupabaseFallback(error)) {
@@ -639,6 +663,9 @@ export const getAllUsers = async (adminEmail = null, adminRole = null) => {
   try {
     const response = await api.get(`/admin/users${params.toString() ? '?' + params.toString() : ''}`);
     const payload = response?.data;
+    if (isLikelyHtmlDocument(payload)) {
+      throw createMissingApiError('Backend users API returned HTML instead of JSON.');
+    }
     if (Array.isArray(payload)) return payload;
     if (Array.isArray(payload?.data)) return payload.data;
     return [];
@@ -661,6 +688,9 @@ export const assignUserRole = async (email, role, department = null, adminEmail 
       role,
       department,
     });
+    if (!response?.data || isLikelyHtmlDocument(response.data)) {
+      throw createMissingApiError('Backend role assignment API returned an invalid response.');
+    }
     return response.data;
   } catch (error) {
     if (shouldUseSupabaseFallback(error)) {
@@ -677,6 +707,9 @@ export const updateComplaint = async (id, data, userEmail = null, userRole = nul
 
   try {
     const response = await api.patch(`/complaints/${id}${params.toString() ? '?' + params.toString() : ''}`, data);
+    if (!response?.data || isLikelyHtmlDocument(response.data)) {
+      throw createMissingApiError('Backend complaint update API returned an invalid response.');
+    }
     return response.data;
   } catch (error) {
     if (shouldUseSupabaseFallback(error)) {
@@ -694,6 +727,9 @@ export const uploadProof = async (id, imageFile, voiceFile = null) => {
     const response = await api.post(`/complaints/${id}/proof`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    if (!response?.data || isLikelyHtmlDocument(response.data)) {
+      throw createMissingApiError('Backend proof upload API returned an invalid response.');
+    }
     return response.data;
   } catch (error) {
     if (shouldUseSupabaseFallback(error)) {
@@ -765,6 +801,9 @@ export const submitComplaintFeedback = async (id, feedback, comment = '', userEm
       `/complaints/${id}/feedback${params.toString() ? `?${params.toString()}` : ''}`,
       { feedback, comment },
     );
+    if (!response?.data || isLikelyHtmlDocument(response.data)) {
+      throw createMissingApiError('Backend feedback API returned an invalid response.');
+    }
     return response.data;
   } catch (error) {
     if (shouldUseSupabaseFallback(error)) {
