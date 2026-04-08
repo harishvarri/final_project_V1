@@ -5,6 +5,7 @@ import mimetypes
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -172,6 +173,32 @@ def normalize_gradio_prediction_result(result):
         raise ValueError("Gradio API returned no prediction data")
 
     if isinstance(result, list) and result:
+        if len(result) >= 4 and isinstance(result[0], str):
+            category = normalize_category_key(result[0])
+            confidence = coerce_confidence(result[2], default=0.0)
+            top_rows = []
+
+            for line in str(result[3] or "").splitlines():
+                if ":" not in line:
+                    continue
+                label_part, score_part = line.split(":", 1)
+                parsed_category = normalize_category_key(label_part)
+                parsed_confidence = coerce_confidence(score_part, default=None)
+                if parsed_category and parsed_confidence is not None:
+                    top_rows.append({
+                        "category": parsed_category,
+                        "confidence": parsed_confidence,
+                    })
+
+            if not top_rows and category:
+                top_rows = [{"category": category, "confidence": confidence}]
+            if not top_rows:
+                raise ValueError("Gradio response did not contain valid category confidences")
+
+            top_rows.sort(key=lambda item: item["confidence"], reverse=True)
+            top_prediction = top_rows[0]
+            return top_rows, top_prediction["category"], top_prediction["confidence"]
+
         return normalize_gradio_prediction_result(result[0])
 
     if isinstance(result, dict):
@@ -212,64 +239,84 @@ def normalize_gradio_prediction_result(result):
     raise ValueError(f"Unsupported Gradio response format: {type(result).__name__}")
 
 
-def get_gradio_predict_url():
+def get_gradio_base_url():
     if not GRADIO_MODEL_API_URL:
         return ""
-    return f"{GRADIO_MODEL_API_URL.rstrip('/')}/api/predict/"
-
-
-def encode_filestorage_as_data_url(file_storage):
-    filename = file_storage.filename or "upload.jpg"
-    mime_type = file_storage.mimetype or mimetypes.guess_type(filename)[0] or "image/jpeg"
-
-    try:
-        file_storage.stream.seek(0)
-    except Exception:
-        pass
-
-    file_bytes = file_storage.read()
-    if not file_bytes:
-        raise ValueError("Uploaded image file was empty")
-
-    try:
-        file_storage.stream.seek(0)
-    except Exception:
-        pass
-
-    encoded = base64.b64encode(file_bytes).decode("ascii")
-    return f"data:{mime_type};base64,{encoded}"
+    return GRADIO_MODEL_API_URL.rstrip("/")
 
 
 def predict_with_gradio_backend(file_storage):
     try:
         global gradio_client_error
 
-        predict_url = get_gradio_predict_url()
-        if not predict_url:
+        gradio_base_url = get_gradio_base_url()
+        if not gradio_base_url:
             gradio_client_error = "GRADIO_MODEL_API_URL is not configured"
             raise RuntimeError(gradio_client_error)
 
+        filename = file_storage.filename or "upload.jpg"
+        mime_type = file_storage.mimetype or mimetypes.guess_type(filename)[0] or "image/jpeg"
+
+        try:
+            file_storage.stream.seek(0)
+        except Exception:
+            pass
+
+        file_bytes = file_storage.read()
+        if not file_bytes:
+            raise ValueError("Uploaded image file was empty")
+
+        boundary = f"----gradio-upload-{int(time.time() * 1000)}"
+        multipart_body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'
+            f"Content-Type: {mime_type}\r\n\r\n"
+        ).encode("utf-8") + file_bytes + f"\r\n--{boundary}--\r\n".encode("utf-8")
+
+        upload_request = urllib.request.Request(
+            f"{gradio_base_url}/upload",
+            data=multipart_body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(upload_request, timeout=45) as response:
+            upload_response_body = response.read().decode("utf-8")
+
+        uploaded_paths = json.loads(upload_response_body)
+        if not isinstance(uploaded_paths, list) or not uploaded_paths:
+            raise RuntimeError("Gradio upload did not return a server file path")
+
         request_body = json.dumps({
-            "data": [encode_filestorage_as_data_url(file_storage)]
+            "data": [{"path": uploaded_paths[0]}]
         }).encode("utf-8")
 
-        request_obj = urllib.request.Request(
-            predict_url,
+        predict_request = urllib.request.Request(
+            f"{gradio_base_url}/call/predict",
             data=request_body,
             headers={"Content-Type": "application/json"},
             method="POST",
         )
 
-        with urllib.request.urlopen(request_obj, timeout=45) as response:
-            response_body = response.read().decode("utf-8")
+        with urllib.request.urlopen(predict_request, timeout=45) as response:
+            predict_response_body = response.read().decode("utf-8")
 
-        parsed = json.loads(response_body)
-        if parsed.get("error"):
-            raise RuntimeError(parsed["error"])
+        predict_payload = json.loads(predict_response_body)
+        event_id = predict_payload.get("event_id")
+        if not event_id:
+            raise RuntimeError("Gradio predict call did not return an event id")
 
-        result = parsed.get("data")
-        if isinstance(result, list) and result:
-            result = result[0]
+        with urllib.request.urlopen(f"{gradio_base_url}/call/predict/{event_id}", timeout=60) as response:
+            event_response_body = response.read().decode("utf-8")
+
+        data_line = next(
+            (line for line in event_response_body.splitlines() if line.startswith("data: ")),
+            None,
+        )
+        if not data_line:
+            raise RuntimeError("Gradio event stream did not include prediction data")
+
+        result = json.loads(data_line[6:])
 
         normalized = normalize_gradio_prediction_result(result)
         gradio_client_error = None

@@ -73,9 +73,10 @@ export default function ReportI18n() {
         return;
       }
 
-      toast.success(translateMessage('Complaint submitted successfully!'));
       if (data?.warning) {
         toast.error(translateMessage(data.warning));
+      } else {
+        toast.success(translateMessage('Complaint submitted successfully!'));
       }
 
       if (REPORT_MODE === 'gradio' || !user?.email) {

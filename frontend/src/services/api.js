@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').trim() || '/api';
 const GRADIO_API_URL = (import.meta.env.VITE_GRADIO_API_URL || 'https://4dcf97b9438c1f4ced.gradio.live/').trim();
-const GRADIO_PREDICT_URL = GRADIO_API_URL ? `${GRADIO_API_URL.replace(/\/+$/, '')}/api/predict/` : '';
+const GRADIO_BASE_URL = GRADIO_API_URL.replace(/\/+$/, '');
 const REPORT_MODE = (import.meta.env.VITE_REPORT_API_MODE || 'backend').trim().toLowerCase();
 const SAVE_GRADIO_TO_BACKEND = (import.meta.env.VITE_GRADIO_SAVE_TO_BACKEND || 'true').trim().toLowerCase() === 'true';
 const CONFIDENCE_THRESHOLD = 0.6;
@@ -131,43 +131,106 @@ const shouldUseSupabaseFallback = (error) => {
 const getDepartmentFromCategory = (category) =>
   CATEGORY_TO_DEPARTMENT[category] || 'General Department';
 
-const fileToDataUrl = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
+const parseTopPredictionsText = (value) =>
+  String(value || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [labelPart, scorePart] = line.split(':');
+      const category = normalizeCategoryKey(labelPart);
+      const confidence = Number.parseFloat(String(scorePart || '').trim());
+      return {
+        category,
+        confidence: Number.isFinite(confidence) ? confidence : 0,
+      };
+    })
+    .filter((item) => item.category);
 
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(new Error('Failed to read the uploaded image for Gradio classification.'));
+const parseGradioSpaceResult = (payload) => {
+  if (!Array.isArray(payload) || payload.length < 4) {
+    throw new Error('Gradio API returned an unrecognized prediction format.');
+  }
 
-    reader.readAsDataURL(file);
-  });
+  const category = normalizeCategoryKey(payload[0]) || 'unknown';
+  const confidence = Number.parseFloat(String(payload[2] || '0'));
+  const top3 = parseTopPredictionsText(payload[3]);
+  const normalizedConfidence = Number.isFinite(confidence)
+    ? confidence
+    : Number(top3[0]?.confidence || 0);
+  const normalizedCategory = category !== 'unknown'
+    ? category
+    : (top3[0]?.category || 'unknown');
+
+  return {
+    category: normalizedCategory,
+    confidence: normalizedConfidence,
+    top3,
+    department: String(payload[1] || getDepartmentFromCategory(normalizedCategory)),
+    status: normalizedConfidence < CONFIDENCE_THRESHOLD ? 'needs_manual_review' : 'classified_only',
+    message: 'Image classified using Gradio endpoint',
+    prediction_source: 'gradio',
+  };
+};
 
 const requestGradioPrediction = async (imageFile) => {
-  if (!GRADIO_PREDICT_URL) {
+  if (!GRADIO_BASE_URL) {
     throw new Error('VITE_GRADIO_API_URL is missing. Set it in frontend/.env');
   }
 
-  const encodedImage = await fileToDataUrl(imageFile);
-  const response = await fetch(GRADIO_PREDICT_URL, {
+  const uploadFormData = new FormData();
+  uploadFormData.append('files', imageFile);
+
+  const uploadResponse = await fetch(`${GRADIO_BASE_URL}/upload`, {
+    method: 'POST',
+    body: uploadFormData,
+  });
+
+  const uploadPayload = await uploadResponse.json().catch(() => null);
+
+  if (!uploadResponse.ok || !Array.isArray(uploadPayload) || !uploadPayload[0]) {
+    const errorMessage =
+      uploadPayload?.error ||
+      uploadPayload?.detail ||
+      `Gradio upload failed with status ${uploadResponse.status}`;
+    throw new Error(errorMessage);
+  }
+
+  const predictResponse = await fetch(`${GRADIO_BASE_URL}/call/predict`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      data: [encodedImage],
+      data: [{ path: uploadPayload[0] }],
     }),
   });
 
-  const payload = await response.json().catch(() => null);
+  const predictPayload = await predictResponse.json().catch(() => null);
 
-  if (!response.ok) {
+  if (!predictResponse.ok || !predictPayload?.event_id) {
     const errorMessage =
-      payload?.error ||
-      payload?.detail ||
-      `Gradio API request failed with status ${response.status}`;
+      predictPayload?.error ||
+      predictPayload?.detail ||
+      `Gradio prediction failed with status ${predictResponse.status}`;
     throw new Error(errorMessage);
   }
 
-  return payload;
+  const eventResponse = await fetch(`${GRADIO_BASE_URL}/call/predict/${predictPayload.event_id}`);
+  const eventText = await eventResponse.text();
+  if (!eventResponse.ok) {
+    throw new Error(`Failed to fetch Gradio prediction result (${eventResponse.status}).`);
+  }
+
+  const dataLine = eventText
+    .split('\n')
+    .find((line) => line.startsWith('data: '));
+
+  if (!dataLine) {
+    throw new Error('Gradio result stream did not include prediction data.');
+  }
+
+  return JSON.parse(dataLine.slice(6));
 };
 
 const appendPredictionToFormData = (formData, prediction) => {
@@ -226,6 +289,14 @@ const uploadFileToSupabase = async (file, { bucketName = 'complaints', pathPrefi
 };
 
 const fetchComplaintsFromSupabase = async (userEmail = null, userRole = null, userDept = null) => {
+  let resolvedUserEmail = userEmail ? String(userEmail).trim().toLowerCase() : '';
+  if (!resolvedUserEmail) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    resolvedUserEmail = String(user?.email || '').trim().toLowerCase();
+  }
+
   let query = supabase.from('complaints').select('*').order('created_at', { ascending: false });
 
   if (userRole === 'admin') {
@@ -233,9 +304,9 @@ const fetchComplaintsFromSupabase = async (userEmail = null, userRole = null, us
   } else if (userRole === 'officer') {
     if (userDept) query = query.ilike('department', `%${userDept}%`);
   } else if (userRole === 'worker') {
-    if (userEmail) query = query.eq('worker_id', userEmail);
-  } else if (userEmail) {
-    query = query.eq('user_email', userEmail);
+    if (resolvedUserEmail) query = query.eq('worker_id', resolvedUserEmail);
+  } else if (resolvedUserEmail) {
+    query = query.eq('user_email', resolvedUserEmail);
   }
 
   const { data, error } = await query;
@@ -440,6 +511,13 @@ const buildFallbackPrediction = async (imageFile) => {
 
 const saveComplaintDirectlyToSupabase = async (formData, imageFile, voiceFile = null, userEmail = null, basePrediction = null) => {
   const prediction = basePrediction || (await buildFallbackPrediction(imageFile));
+  let resolvedUserEmail = userEmail ? String(userEmail).trim().toLowerCase() : '';
+  if (!resolvedUserEmail) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    resolvedUserEmail = String(user?.email || '').trim().toLowerCase();
+  }
   const imageUrl = await uploadFileToSupabase(imageFile, {
     bucketName: 'complaints',
     pathPrefix: 'complaints',
@@ -472,7 +550,7 @@ const saveComplaintDirectlyToSupabase = async (formData, imageFile, voiceFile = 
     latitude,
     longitude,
     location_name: locationName,
-    user_email: userEmail || String(formData.get('user_email') || '').trim() || 'anonymous@civic.local',
+    user_email: resolvedUserEmail || String(formData.get('user_email') || '').trim().toLowerCase() || 'anonymous@civic.local',
     status: 'submitted',
     image_url: imageUrl,
     is_confident: !needsManualReview,
@@ -504,34 +582,12 @@ const saveComplaintDirectlyToSupabase = async (formData, imageFile, voiceFile = 
 };
 
 export const predictWithGradio = async (imageFile) => {
-  if (!GRADIO_PREDICT_URL) {
+  if (!GRADIO_BASE_URL) {
     throw new Error('VITE_GRADIO_API_URL is missing. Set it in frontend/.env');
   }
 
   const result = await requestGradioPrediction(imageFile);
-  const rawPrediction = Array.isArray(result?.data) ? result.data[0] : result?.data;
-  const normalized = normalizeTopPrediction(rawPrediction);
-  const top3 = Object.entries(normalized.scores)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([category, confidence]) => ({ category, confidence }));
-  const topSuggestion = top3[0]?.category || null;
-  const normalizedCategory = normalizeCategoryKey(normalized.category) || topSuggestion || 'unknown';
-  const confidence = Number(normalized.confidence || top3[0]?.confidence || 0);
-
-  if (normalizedCategory === 'unknown' && top3.length === 0) {
-    throw new Error('Gradio API returned an unrecognized prediction format.');
-  }
-
-  return {
-    category: normalizedCategory,
-    confidence,
-    top3,
-    department: getDepartmentFromCategory(normalizedCategory),
-    status: confidence < CONFIDENCE_THRESHOLD ? 'needs_manual_review' : 'classified_only',
-    message: 'Image classified using Gradio endpoint',
-    prediction_source: 'gradio',
-  };
+  return parseGradioSpaceResult(result);
 };
 
 const buildComplaintFormData = async (imageFile, priority, voiceFile = null, userEmail = null) => {
@@ -580,6 +636,13 @@ export const uploadComplaint = async (imageFile, priority, voiceFile = null, use
 
   if (REPORT_MODE === 'gradio' && !gradioPrediction && !SAVE_GRADIO_TO_BACKEND) {
     throw new Error('Gradio classification is unavailable right now.');
+  }
+
+  if (REPORT_MODE === 'gradio' && SAVE_GRADIO_TO_BACKEND) {
+    if (!gradioPrediction) {
+      throw new Error('Gradio classification is unavailable right now.');
+    }
+    return saveComplaintDirectlyToSupabase(formData, imageFile, voiceFile, userEmail, gradioPrediction);
   }
 
   const mergePersistedResponse = (payload) => {

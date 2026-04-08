@@ -8,6 +8,7 @@ import Card from '../components/Card';
 import Button from '../components/Button';
 import ComplaintThumbnail from '../components/ComplaintThumbnail';
 import { formatCoordinates } from '../utils/location';
+import { supabase } from '../services/supabaseClient';
 
 const STATUS_COLORS = {
   submitted: 'bg-blue-100 text-blue-700',
@@ -67,8 +68,32 @@ export default function ReportedIssuesFeedbackI18n() {
     try {
       const data = await fetchComplaints(user.email, 'citizen');
       setComplaints(data || []);
-    } catch {
-      setError(l('Failed to load your reported issues', 'మీ నివేదించిన సమస్యలను లోడ్ చేయలేకపోయాం'));
+    } catch (reason) {
+      try {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        const resolvedEmail = String(authUser?.email || user?.email || '').trim().toLowerCase();
+
+        if (!resolvedEmail) throw reason;
+
+        const { data, error: supabaseError } = await supabase
+          .from('complaints')
+          .select('*')
+          .eq('user_email', resolvedEmail)
+          .order('created_at', { ascending: false });
+
+        if (supabaseError) throw supabaseError;
+
+        setComplaints(data || []);
+        setError(null);
+      } catch (fallbackError) {
+        console.error('Failed to load reported issues:', fallbackError);
+        setError(
+          fallbackError?.message ||
+            l('Failed to load your reported issues', 'మీ నివేదించిన సమస్యలను లోడ్ చేయలేకపోయాం')
+        );
+      }
     } finally {
       setLoading(false);
     }
