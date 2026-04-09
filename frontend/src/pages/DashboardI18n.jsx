@@ -134,7 +134,7 @@ export default function DashboardI18n() {
       setSelectedIssue(null);
       loadData();
     } catch (reason) {
-      toast.error(reason?.response?.data?.error || l('Failed to assign task', 'Failed to assign task'));
+      toast.error(reason?.response?.data?.error || reason?.message || l('Failed to assign task', 'Failed to assign task'));
     } finally {
       setSaving(false);
     }
@@ -146,15 +146,15 @@ export default function DashboardI18n() {
     try {
       await updateComplaint(
         selectedIssue.id,
-        { status: 'resolved', notes: editNotes || l('Approved by Officer', 'Approved by Officer') },
+        { status: 'closed', notes: editNotes || l('Approved by Officer', 'Approved by Officer') },
         user?.email,
         user?.role,
       );
       toast.success(l('Task verified and closed!', 'Task verified and closed!'));
       setSelectedIssue(null);
       loadData();
-    } catch {
-      toast.error(l('Failed to approve task', 'Failed to approve task'));
+    } catch (reason) {
+      toast.error(reason?.response?.data?.error || reason?.message || l('Failed to approve task', 'Failed to approve task'));
     } finally {
       setSaving(false);
     }
@@ -178,8 +178,8 @@ export default function DashboardI18n() {
       toast.success(l('Task rejected and sent back for rework!', 'Task rejected and sent back for rework!'));
       setSelectedIssue(null);
       loadData();
-    } catch {
-      toast.error(l('Failed to reject task', 'Failed to reject task'));
+    } catch (reason) {
+      toast.error(reason?.response?.data?.error || reason?.message || l('Failed to reject task', 'Failed to reject task'));
     } finally {
       setSaving(false);
     }
@@ -207,8 +207,12 @@ export default function DashboardI18n() {
       toast.success(l(`Complaint forwarded to ${translateDepartment(rerouteDept)}.`, `${translateDepartment(rerouteDept)} శాఖకు ఫిర్యాదు మళ్లించబడింది.`));
       setSelectedIssue(null);
       loadData();
-    } catch {
-      toast.error(l('Failed to forward complaint to the selected department.', 'ఎంచుకున్న శాఖకు ఫిర్యాదును మళ్లించలేకపోయాం.'));
+    } catch (reason) {
+      toast.error(
+        reason?.response?.data?.error ||
+          reason?.message ||
+          l('Failed to forward complaint to the selected department.', 'ఎంచుకున్న శాఖకు ఫిర్యాదును మళ్లించలేకపోయాం.'),
+      );
     } finally {
       setSaving(false);
     }
@@ -423,7 +427,7 @@ export default function DashboardI18n() {
                     </div>
                   )}
                 </div>
-                {(selectedIssue.proof_url || selectedIssue.status === 'resolved') && (
+                {(selectedIssue.proof_url || selectedIssue.status === 'resolved' || selectedIssue.status === 'closed') && (
                   <div className="rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm">
                     <p className="text-xs text-emerald-600 uppercase font-bold mb-2">{l('After (Proof of Work)', 'After (Proof of Work)')}</p>
                     <ComplaintThumbnail

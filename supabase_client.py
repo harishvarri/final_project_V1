@@ -17,7 +17,12 @@ else:
 
 logger = logging.getLogger(__name__)
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+for env_path in (
+    Path(__file__).resolve().parent / ".env",
+    Path(__file__).resolve().parent / "frontend" / ".env",
+):
+    if env_path.exists():
+        load_dotenv(env_path)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
 _key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.environ.get("SUPABASE_KEY", "").strip()
@@ -25,12 +30,15 @@ _key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.environ.get
 
 def _recommended_python_path() -> str:
     project_root = Path(__file__).resolve().parent
-    windows_python = project_root / "civicenv" / "Scripts" / "python.exe"
-    unix_python = project_root / "civicenv" / "bin" / "python"
-    if windows_python.exists():
-        return str(windows_python)
-    if unix_python.exists():
-        return str(unix_python)
+    candidate_paths = (
+        project_root / "civicenv" / "Scripts" / "python.exe",
+        project_root / "civicenv" / "bin" / "python",
+        project_root / ".venv" / "Scripts" / "python.exe",
+        project_root / ".venv" / "bin" / "python",
+    )
+    for candidate in candidate_paths:
+        if candidate.exists():
+            return str(candidate)
     return sys.executable
 
 

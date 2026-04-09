@@ -24,7 +24,7 @@ export function AuthProvider({ children }) {
           .from('users')
           .select('role, department, office_location')
           .eq('email', session.user.email)
-          .single();
+          .maybeSingle();
 
         const userData = {
           email: session.user.email,
@@ -111,7 +111,7 @@ export function AuthProvider({ children }) {
           .from('users')
           .select('role, department, office_location')
           .eq('email', email)
-          .single();
+          .maybeSingle();
 
         if (data) {
           role = data.role || 'citizen';

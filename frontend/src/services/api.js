@@ -7,6 +7,7 @@ const GRADIO_API_URL = (import.meta.env.VITE_GRADIO_API_URL || 'https://4dcf97b9
 const GRADIO_BASE_URL = GRADIO_API_URL.replace(/\/+$/, '');
 const REPORT_MODE = (import.meta.env.VITE_REPORT_API_MODE || 'backend').trim().toLowerCase();
 const SAVE_GRADIO_TO_BACKEND = (import.meta.env.VITE_GRADIO_SAVE_TO_BACKEND || 'true').trim().toLowerCase() === 'true';
+const PREFER_DIRECT_SUPABASE = (import.meta.env.VITE_SUPABASE_DIRECT_FIRST || 'true').trim().toLowerCase() === 'true';
 const CONFIDENCE_THRESHOLD = 0.6;
 const CATEGORY_TO_DEPARTMENT = {
   dead_animals: 'Sanitation Department',
@@ -48,6 +49,14 @@ const api = axios.create({
 const createMissingApiError = (message = 'Backend API is unavailable.') => {
   const error = new Error(message);
   error.isMissingApi = true;
+  return error;
+};
+
+const createDirectUpdateBlockedError = (
+  message = 'Direct Supabase updates are blocked. Start the backend API on port 5000 or enable complaint update policies in Supabase.',
+) => {
+  const error = new Error(message);
+  error.code = 'DIRECT_UPDATE_BLOCKED';
   return error;
 };
 
@@ -126,6 +135,34 @@ const shouldUseSupabaseFallback = (error) => {
     message.includes('timeout') ||
     message.includes('failed to fetch')
   );
+};
+
+const withPreferredDataSource = async ({
+  directOperation,
+  apiOperation,
+  fallbackCondition = shouldUseSupabaseFallback,
+  operationLabel = 'Operation',
+}) => {
+  let directError = null;
+
+  if (PREFER_DIRECT_SUPABASE) {
+    try {
+      return await directOperation();
+    } catch (error) {
+      directError = error;
+      console.warn(`${operationLabel} direct Supabase attempt failed, falling back to backend API:`, error);
+    }
+  }
+
+  try {
+    return await apiOperation();
+  } catch (error) {
+    if (fallbackCondition(error)) {
+      if (directError) throw directError;
+      return directOperation();
+    }
+    throw error;
+  }
 };
 
 const getDepartmentFromCategory = (category) =>
@@ -433,14 +470,25 @@ const updateComplaintInSupabase = async (id, data, { optionalFields = [] } = {})
   const optionalFieldSet = new Set(optionalFields);
 
   for (let attempt = 0; attempt <= optionalFieldSet.size; attempt += 1) {
-    const { data: updated, error } = await supabase
+    const { data: updatedRows, error } = await supabase
       .from('complaints')
       .update(remainingUpdateData)
       .eq('id', id)
-      .select()
-      .single();
+      .select();
 
-    if (!error) return updated;
+    if (!error) {
+      if (Array.isArray(updatedRows) && updatedRows.length > 0) {
+        return updatedRows[0];
+      }
+
+      throw createDirectUpdateBlockedError(
+        'Direct Supabase update returned no complaint rows. This usually means Row Level Security blocked the update or the complaint id does not exist.',
+      );
+    }
+
+    if (error?.code === 'PGRST116') {
+      throw createDirectUpdateBlockedError();
+    }
 
     const missingColumn = extractMissingColumnName(error);
     if (missingColumn && optionalFieldSet.has(missingColumn) && missingColumn in remainingUpdateData) {
@@ -686,36 +734,34 @@ export const fetchComplaints = async (userEmail = null, userRole = null, userDep
   if (userRole) params.append('user_role', userRole);
   if (userDept) params.append('user_dept', userDept);
 
-  try {
-    const response = await api.get(`/complaints${params.toString() ? '?' + params.toString() : ''}`);
-    const payload = response?.data;
-    if (isLikelyHtmlDocument(payload)) {
-      throw createMissingApiError('Backend complaints API returned HTML instead of JSON.');
-    }
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload?.data)) return payload.data;
-    return [];
-  } catch (error) {
-    if (shouldUseSupabaseFallback(error)) {
-      return fetchComplaintsFromSupabase(userEmail, userRole, userDept);
-    }
-    throw error;
-  }
+  return withPreferredDataSource({
+    directOperation: () => fetchComplaintsFromSupabase(userEmail, userRole, userDept),
+    apiOperation: async () => {
+      const response = await api.get(`/complaints${params.toString() ? '?' + params.toString() : ''}`);
+      const payload = response?.data;
+      if (isLikelyHtmlDocument(payload)) {
+        throw createMissingApiError('Backend complaints API returned HTML instead of JSON.');
+      }
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload?.data)) return payload.data;
+      return [];
+    },
+    operationLabel: 'Fetch complaints',
+  });
 };
 
 export const fetchAnalytics = async () => {
-  try {
-    const response = await api.get('/analytics');
-    if (!response?.data || isLikelyHtmlDocument(response.data)) {
-      throw createMissingApiError('Backend analytics API returned an invalid response.');
-    }
-    return response.data;
-  } catch (error) {
-    if (shouldUseSupabaseFallback(error)) {
-      return fetchAnalyticsFromSupabase();
-    }
-    throw error;
-  }
+  return withPreferredDataSource({
+    directOperation: () => fetchAnalyticsFromSupabase(),
+    apiOperation: async () => {
+      const response = await api.get('/analytics');
+      if (!response?.data || isLikelyHtmlDocument(response.data)) {
+        throw createMissingApiError('Backend analytics API returned an invalid response.');
+      }
+      return response.data;
+    },
+    operationLabel: 'Fetch analytics',
+  });
 };
 
 export const getAllUsers = async (adminEmail = null, adminRole = null) => {
@@ -723,21 +769,21 @@ export const getAllUsers = async (adminEmail = null, adminRole = null) => {
   if (adminEmail) params.append('admin_email', adminEmail);
   if (adminRole) params.append('admin_role', adminRole);
 
-  try {
-    const response = await api.get(`/admin/users${params.toString() ? '?' + params.toString() : ''}`);
-    const payload = response?.data;
-    if (isLikelyHtmlDocument(payload)) {
-      throw createMissingApiError('Backend users API returned HTML instead of JSON.');
-    }
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload?.data)) return payload.data;
-    return [];
-  } catch (error) {
-    if (shouldUseSupabaseFallback(error) || (error?.response?.status === 403 && adminRole === 'officer')) {
-      return fetchUsersFromSupabase();
-    }
-    throw error;
-  }
+  return withPreferredDataSource({
+    directOperation: () => fetchUsersFromSupabase(),
+    apiOperation: async () => {
+      const response = await api.get(`/admin/users${params.toString() ? '?' + params.toString() : ''}`);
+      const payload = response?.data;
+      if (isLikelyHtmlDocument(payload)) {
+        throw createMissingApiError('Backend users API returned HTML instead of JSON.');
+      }
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload?.data)) return payload.data;
+      return [];
+    },
+    fallbackCondition: (error) => shouldUseSupabaseFallback(error) || (error?.response?.status === 403 && adminRole === 'officer'),
+    operationLabel: 'Fetch users',
+  });
 };
 
 export const assignUserRole = async (email, role, department = null, adminEmail = null, adminRole = null) => {
@@ -745,22 +791,21 @@ export const assignUserRole = async (email, role, department = null, adminEmail 
   if (adminEmail) params.append('admin_email', adminEmail);
   if (adminRole) params.append('admin_role', adminRole);
 
-  try {
-    const response = await api.post(`/admin/users/assign-role${params.toString() ? '?' + params.toString() : ''}`, {
-      email,
-      role,
-      department,
-    });
-    if (!response?.data || isLikelyHtmlDocument(response.data)) {
-      throw createMissingApiError('Backend role assignment API returned an invalid response.');
-    }
-    return response.data;
-  } catch (error) {
-    if (shouldUseSupabaseFallback(error)) {
-      return upsertUserRoleInSupabase(email, role, department);
-    }
-    throw error;
-  }
+  return withPreferredDataSource({
+    directOperation: () => upsertUserRoleInSupabase(email, role, department),
+    apiOperation: async () => {
+      const response = await api.post(`/admin/users/assign-role${params.toString() ? '?' + params.toString() : ''}`, {
+        email,
+        role,
+        department,
+      });
+      if (!response?.data || isLikelyHtmlDocument(response.data)) {
+        throw createMissingApiError('Backend role assignment API returned an invalid response.');
+      }
+      return response.data;
+    },
+    operationLabel: 'Assign user role',
+  });
 };
 
 export const updateComplaint = async (id, data, userEmail = null, userRole = null) => {
@@ -768,38 +813,36 @@ export const updateComplaint = async (id, data, userEmail = null, userRole = nul
   if (userEmail) params.append('user_email', userEmail);
   if (userRole) params.append('user_role', userRole);
 
-  try {
-    const response = await api.patch(`/complaints/${id}${params.toString() ? '?' + params.toString() : ''}`, data);
-    if (!response?.data || isLikelyHtmlDocument(response.data)) {
-      throw createMissingApiError('Backend complaint update API returned an invalid response.');
-    }
-    return response.data;
-  } catch (error) {
-    if (shouldUseSupabaseFallback(error)) {
-      return updateComplaintInSupabase(id, data);
-    }
-    throw error;
-  }
+  return withPreferredDataSource({
+    directOperation: () => updateComplaintInSupabase(id, data),
+    apiOperation: async () => {
+      const response = await api.patch(`/complaints/${id}${params.toString() ? '?' + params.toString() : ''}`, data);
+      if (!response?.data || isLikelyHtmlDocument(response.data)) {
+        throw createMissingApiError('Backend complaint update API returned an invalid response.');
+      }
+      return response.data;
+    },
+    operationLabel: 'Update complaint',
+  });
 };
 
 export const uploadProof = async (id, imageFile, voiceFile = null) => {
   const formData = new FormData();
   formData.append('image', imageFile);
   if (voiceFile) formData.append('voice', voiceFile);
-  try {
-    const response = await api.post(`/complaints/${id}/proof`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    if (!response?.data || isLikelyHtmlDocument(response.data)) {
-      throw createMissingApiError('Backend proof upload API returned an invalid response.');
-    }
-    return response.data;
-  } catch (error) {
-    if (shouldUseSupabaseFallback(error)) {
-      return uploadProofDirectlyToSupabase(id, imageFile, voiceFile);
-    }
-    throw error;
-  }
+  return withPreferredDataSource({
+    directOperation: () => uploadProofDirectlyToSupabase(id, imageFile, voiceFile),
+    apiOperation: async () => {
+      const response = await api.post(`/complaints/${id}/proof`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (!response?.data || isLikelyHtmlDocument(response.data)) {
+        throw createMissingApiError('Backend proof upload API returned an invalid response.');
+      }
+      return response.data;
+    },
+    operationLabel: 'Upload proof',
+  });
 };
 
 const submitComplaintFeedbackInSupabase = async (id, feedback, comment = '', userEmail = null) => {
@@ -819,7 +862,7 @@ const submitComplaintFeedbackInSupabase = async (id, feedback, comment = '', use
     .from('complaints')
     .select('*')
     .eq('id', id)
-    .single();
+    .maybeSingle();
 
   if (fetchError) throw fetchError;
   if (!complaint) throw new Error('Complaint not found');
@@ -859,21 +902,20 @@ export const submitComplaintFeedback = async (id, feedback, comment = '', userEm
   const params = new URLSearchParams();
   if (userEmail) params.append('user_email', userEmail);
 
-  try {
-    const response = await api.post(
-      `/complaints/${id}/feedback${params.toString() ? `?${params.toString()}` : ''}`,
-      { feedback, comment },
-    );
-    if (!response?.data || isLikelyHtmlDocument(response.data)) {
-      throw createMissingApiError('Backend feedback API returned an invalid response.');
-    }
-    return response.data;
-  } catch (error) {
-    if (shouldUseSupabaseFallback(error)) {
-      return submitComplaintFeedbackInSupabase(id, feedback, comment, userEmail);
-    }
-    throw error;
-  }
+  return withPreferredDataSource({
+    directOperation: () => submitComplaintFeedbackInSupabase(id, feedback, comment, userEmail),
+    apiOperation: async () => {
+      const response = await api.post(
+        `/complaints/${id}/feedback${params.toString() ? `?${params.toString()}` : ''}`,
+        { feedback, comment },
+      );
+      if (!response?.data || isLikelyHtmlDocument(response.data)) {
+        throw createMissingApiError('Backend feedback API returned an invalid response.');
+      }
+      return response.data;
+    },
+    operationLabel: 'Submit complaint feedback',
+  });
 };
 
 export default api;

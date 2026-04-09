@@ -26,6 +26,7 @@ const STATUS_COLORS = {
   in_progress: 'bg-amber-100 text-amber-700',
   waiting_approval: 'bg-purple-100 text-purple-700',
   resolved: 'bg-emerald-100 text-emerald-700',
+  closed: 'bg-emerald-200 text-emerald-900',
 };
 
 const PRIORITY_COLORS = {
@@ -123,7 +124,7 @@ export default function Dashboard() {
       setSelectedIssue(null);
       loadData();
     } catch (err) {
-      toast.error(err?.response?.data?.error || 'Failed to assign task');
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to assign task');
     } finally {
       setSaving(false);
     }
@@ -133,14 +134,14 @@ export default function Dashboard() {
     setSaving(true);
     try {
       await updateComplaint(selectedIssue.id, {
-        status: 'resolved',
+        status: 'closed',
         notes: editNotes || 'Approved by Officer'
       }, user?.email, user?.role);
       toast.success('Task Verified and Closed!');
       setSelectedIssue(null);
       loadData();
-    } catch {
-      toast.error('Failed to approve task');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to approve task');
     } finally {
       setSaving(false);
     }
@@ -161,8 +162,8 @@ export default function Dashboard() {
       toast.success('Task rejected and sent back for rework!');
       setSelectedIssue(null);
       loadData();
-    } catch {
-      toast.error('Failed to reject task');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to reject task');
     } finally {
       setSaving(false);
     }
@@ -190,8 +191,8 @@ export default function Dashboard() {
       toast.success(`Complaint forwarded to ${rerouteDept}.`);
       setSelectedIssue(null);
       loadData();
-    } catch {
-      toast.error('Failed to forward complaint to the selected department.');
+    } catch (err) {
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to forward complaint to the selected department.');
     } finally {
       setSaving(false);
     }
@@ -253,7 +254,8 @@ export default function Dashboard() {
               <option value="submitted">Unassigned</option>
               <option value="waiting_approval">Requires Approval</option>
               <option value="assigned">Assigned / In Progress</option>
-              <option value="resolved">Closed</option>
+              <option value="resolved">Resolved</option>
+              <option value="closed">Closed</option>
             </select>
             <Button variant="outline" className="!border-emerald-300 !text-white hover:!bg-white/10 !text-xs shadow-sm bg-emerald-700/50" onClick={loadData}>
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
@@ -442,7 +444,7 @@ export default function Dashboard() {
                       </div>
                     )}
                   </div>
-                  {(selectedIssue.proof_url || selectedIssue.status === 'resolved') && (
+                  {(selectedIssue.proof_url || selectedIssue.status === 'resolved' || selectedIssue.status === 'closed') && (
                     <div className="rounded-3xl border border-emerald-200 bg-white p-4 shadow-sm">
                       <p className="text-xs text-emerald-600 uppercase font-bold mb-2">After (Proof of Work)</p>
                       <ComplaintThumbnail
@@ -555,7 +557,7 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {selectedIssue.status === 'resolved' && (
+                {(selectedIssue.status === 'resolved' || selectedIssue.status === 'closed') && (
                   <div className="rounded-3xl p-5 bg-emerald-50 border border-emerald-100 shadow-sm">
                     <p className="text-xs text-emerald-800 font-bold uppercase mb-1 flex items-center gap-1"><ShieldCheck size={14}/> Verified & Closed</p>
                     <p className="text-sm text-emerald-900">{selectedIssue.notes || 'No closing remarks provided.'}</p>
