@@ -213,38 +213,3 @@ Linting Frontend
 cd frontend
 npm run lint
 ```
-📝 License
-MIT License - See LICENSE file for details
-👥 Contributing
-Fork the repository
-Create a feature branch (`git checkout -b feature/amazing-feature`)
-Commit changes (`git commit -m 'Add amazing feature'`)
-Push to branch (`git push origin feature/amazing-feature`)
-Open a Pull Request
-🤝 Support
-For issues or questions, please:
-Check existing issues in the repository
-Create a detailed issue with steps to reproduce
-Include system information and error messages
-🚀 Deployment
-Run the Flask API with a production WSGI server (for example `gunicorn` from `requirements.txt`) and serve the built frontend (`npm run build`) from your host or CDN. Configure environment variables on the server the same way as in local `.env` / `frontend/.env.local`.
-Cloud Platforms
-Heroku: Use Procfile for deployment
-Google Cloud: Deploy to Cloud Run
-AWS: Use ElasticBeanstalk or Lambda
-Azure: Deploy to App Service
-Production Checklist
-[ ] Set `DEBUG=False` in Flask config
-[ ] Use `gunicorn` instead of Flask dev server
-[ ] Set up SSL/TLS certificates
-[ ] Configure CORS properly
-[ ] Set up database backups
-[ ] Enable request logging
-[ ] Set up monitoring/alerting
-📚 Additional Resources
-TensorFlow Documentation
-Flask Documentation
-Supabase Docs
-React Documentation
----
-Last Updated: April 2026
