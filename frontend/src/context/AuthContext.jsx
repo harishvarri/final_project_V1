@@ -134,6 +134,15 @@ export function AuthProvider({ children }) {
 
       setUser(userData);
       localStorage.setItem('civicdesk_user', JSON.stringify(userData));
+
+      // NCPL Analytics — identify the user so events are linked to their profile
+      try {
+        if (window.ncpl) {
+          window.ncpl.identify(null, { email: email, name: email });
+          window.ncpl.track('auth.login', { role: role, department: department });
+        }
+      } catch (_) { /* never break login if analytics fails */ }
+
       return { success: true, user: userData };
     } catch (err) {
       return { success: false, message: err.message };
@@ -141,6 +150,10 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
+    // NCPL Analytics — track logout before clearing user state
+    try {
+      if (window.ncpl) window.ncpl.track('auth.logout', {});
+    } catch (_) {}
     try {
       await supabase.auth.signOut();
     } catch (err) {
