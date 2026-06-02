@@ -150,9 +150,12 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    // NCPL Analytics — track logout before clearing user state
+    // NCPL Analytics — track logout and reset identifier back to anonymous
     try {
-      if (window.ncpl) window.ncpl.track('auth.logout', {});
+      if (window.ncpl) {
+        window.ncpl.track('auth.logout', {});
+        window.ncpl.identify(null); // Resets local identity state back to anonymous
+      }
     } catch (_) {}
     try {
       await supabase.auth.signOut();
