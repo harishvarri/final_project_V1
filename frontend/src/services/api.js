@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { lookupLocationName } from '../utils/location';
 import { supabase } from './supabaseClient';
-import { trackError } from './analytics';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').trim() || '/api';
 const GRADIO_API_URL = (import.meta.env.VITE_GRADIO_API_URL || 'https://4dcf97b9438c1f4ced.gradio.live/').trim();
@@ -46,23 +45,6 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
 });
-
-// NCPL: auto-track API failures, categorized for the Error Intelligence Center.
-api.interceptors.response.use(
-  (res) => res,
-  (error) => {
-    try {
-      const status = error?.response?.status;
-      const url = error?.config?.url || 'unknown';
-      let errorType = 'api';
-      if (status === 401) errorType = 'authentication';
-      else if (status === 403) errorType = 'authorization';
-      else if (error?.code === 'ERR_NETWORK' || error?.message === 'Network Error') errorType = 'network';
-      trackError(errorType, (status || error?.code || 'ERR') + ' on ' + url + ': ' + (error?.message || 'request failed'), { status, url });
-    } catch { /* never break the app */ }
-    return Promise.reject(error);
-  },
-);
 
 const createMissingApiError = (message = 'Backend API is unavailable.') => {
   const error = new Error(message);
