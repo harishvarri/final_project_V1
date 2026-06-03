@@ -12,6 +12,7 @@ import Admin from './pages/AdminI18n';
 import Login from './pages/LoginI18n';
 import WorkerDashboard from './pages/WorkerDashboardI18n';
 import ReportedIssues from './pages/ReportedIssuesFeedbackI18n';
+import TestOpsPanel from './components/TestOpsPanel';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
           <div className="min-h-screen bg-gray-50 flex flex-col">
             <Navbar />
+            <TestOpsPanel />
             <main className="flex-1">
               <Routes>
                 <Route path="/" element={<Home />} />
