@@ -8,10 +8,10 @@ import Home from './pages/HomeI18n';
 import Report from './pages/ReportI18n';
 import Dashboard from './pages/DashboardI18n';
 import Issues from './pages/IssuesI18n';
-import Admin from './pages/AdminI18n';
-import Login from './pages/LoginI18n';
-import WorkerDashboard from './pages/WorkerDashboardI18n';
-import ReportedIssues from './pages/ReportedIssuesFeedbackI18n';
+// import Admin from './pages/AdminI18n';
+// import Login from './pages/LoginI18n';
+// import WorkerDashboard from './pages/WorkerDashboardI18n';
+// import ReportedIssues from './pages/ReportedIssuesFeedbackI18n';
 
 export default function App() {
   return (
